@@ -7,7 +7,7 @@ import $file.ci.upload
 import $ivy.`com.lihaoyi::mill-contrib-bloop:$MILL_VERSION`
 import $ivy.`io.get-coursier::coursier-launcher:2.1.0-RC1`
 
-val ghOrg = "com-lihaoyi"
+val ghOrg = "almond-sh"
 val ghRepo = "Ammonite"
 val masterBranch = "main"
 val publishBranches = Seq(masterBranch, "2.x")
