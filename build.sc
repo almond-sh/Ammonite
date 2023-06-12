@@ -334,7 +334,7 @@ trait AmmModule extends AmmInternalModule with PublishModule{
   def publishVersion = buildVersion
   def pomSettings = PomSettings(
     description = artifactName(),
-    organization = "com.lihaoyi",
+    organization = "sh.almond.tmp.ammonite",
     url = s"https://github.com/${ghOrg}/${ghRepo}",
     licenses = Seq(License.MIT),
     versionControl = VersionControl.github(ghOrg, ghRepo),
