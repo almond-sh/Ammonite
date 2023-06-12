@@ -9,6 +9,7 @@ import java.util.Collections
 
 import ammonite.util.{Imports, Util}
 
+import scala.annotation.tailrec
 import scala.collection.mutable
 
 
@@ -49,9 +50,14 @@ class Frame(val classloader: SpecialClassLoader,
   def addClasspath(additional: Seq[java.net.URL]) = {
     if (!frozen0) {
       version0 += 1
-      additional.foreach(classloader.add)
+      val actualAdditional = additional
+        .iterator
+        .map(url => (url, classloader.add(url)))
+        .filter(_._2)
+        .map(_._1)
+        .toVector
       classpath0 = classpath0 ++ additional
-      hooks.foreach(_.addClasspath(additional))
+      hooks.foreach(_.addClasspath(actualAdditional))
     }
   }
   def addPluginClasspath(additional: Seq[java.net.URL]) = {
@@ -246,10 +252,27 @@ class SpecialClassLoader(parent: ClassLoader,
 
     } else super.findClass(name)
   }
-  def add(url: URL) = {
-    classpathSignature0 = classpathSignature0 ++ Seq(jarSignature(url))
-    this.addURL(url)
+  def hasUrl(url: URL): Boolean = {
+    @tailrec
+    def viaParents(loader: ClassLoader = parent): Boolean = {
+      val hasUrl0 = loader match {
+        case null => false
+        case s: SpecialClassLoader => s.getURLs.contains(url)
+        case _ => false
+      }
+      if (hasUrl0) true
+      else if (loader == null) false
+      else viaParents(loader.getParent)
+    }
+    getURLs.contains(url) || viaParents()
   }
+  def add(url: URL): Boolean =
+    if (hasUrl(url)) false
+    else {
+      classpathSignature0 = classpathSignature0 ++ Seq(jarSignature(url))
+      this.addURL(url)
+      true
+    }
 
   override def close() = {
     // DO NOTHING LOLZ

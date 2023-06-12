@@ -721,6 +721,13 @@ object AdvancedTests extends TestSuite{
 
             @ deps = Set.empty[String]
 
+            @ import $$ivy.`org.typelevel::cats-core:2.9.0`
+
+            @ val firstEmptyCheck = deps.isEmpty
+            firstEmptyCheck: Boolean = true
+
+            @ deps = Set.empty[String]
+
             @ interp.load.ivy("info.picocli" % "picocli" % "4.7.3")
 
             @ val secondExpectedDeps = Set(
@@ -729,6 +736,13 @@ object AdvancedTests extends TestSuite{
 
             @ val secondCheck = deps == secondExpectedDeps
             secondCheck: Boolean = true
+
+            @ deps = Set.empty[String]
+
+            @ interp.load.ivy("info.picocli" % "picocli" % "4.7.3")
+
+            @ val secondEmptyCheck = deps.isEmpty
+            secondEmptyCheck: Boolean = true
           """
       )
     }
