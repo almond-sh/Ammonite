@@ -25,7 +25,8 @@ class Frame(val classloader: SpecialClassLoader,
             val pluginClassloader: SpecialClassLoader,
             private[this] var imports0: Imports,
             private[this] var classpath0: Seq[java.net.URL],
-            private[this] var usedEarlierDefinitions0: Seq[String]) extends ammonite.util.Frame{
+            private[this] var usedEarlierDefinitions0: Seq[String],
+            private[this] var hooks0: Seq[ammonite.util.Frame.Hook]) extends ammonite.util.Frame{
   private var frozen0 = false
   def frozen = frozen0
   def freeze(): Unit = {
@@ -50,6 +51,7 @@ class Frame(val classloader: SpecialClassLoader,
       version0 += 1
       additional.foreach(classloader.add)
       classpath0 = classpath0 ++ additional
+      hooks.foreach(_.addClasspath(additional))
     }
   }
   def addPluginClasspath(additional: Seq[java.net.URL]) = {
@@ -60,6 +62,10 @@ class Frame(val classloader: SpecialClassLoader,
   }
   def usedEarlierDefinitions_=(usedEarlierDefinitions: Seq[String]): Unit =
     usedEarlierDefinitions0 = usedEarlierDefinitions
+  def hooks: Seq[ammonite.util.Frame.Hook] = hooks0
+  def addHook(hook: ammonite.util.Frame.Hook): Unit = {
+    hooks0 = hooks0 :+ hook
+  }
 }
 object Frame{
   def createInitial(baseClassLoader: ClassLoader = Thread.currentThread().getContextClassLoader) = {
@@ -77,7 +83,7 @@ object Frame{
       likelyJdkSourceLocation.wrapped.toUri.toURL
     )
 
-    new Frame(special, special, Imports(), Seq(), Seq())
+    new Frame(special, special, Imports(), Seq(), Seq(), Seq())
   }
 }
 
