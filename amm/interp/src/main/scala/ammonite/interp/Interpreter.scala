@@ -226,13 +226,15 @@ class Interpreter(val compilerBuilder: CompilerBuilder,
     )
   }
 
+  def wrapperNamePrefix = "cmd"
+
   def processLine(code: String,
                   stmts: Seq[String],
                   currentLine: Int,
                   silent: Boolean = false,
                   incrementLine: () => Unit): Res[Evaluated] = synchronized{
 
-    val wrapperName = Name("cmd" + currentLine)
+    val wrapperName = Name(wrapperNamePrefix + currentLine)
 
     val codeSource = CodeSource(
       wrapperName,
@@ -422,7 +424,7 @@ class Interpreter(val compilerBuilder: CompilerBuilder,
   def processExec(code: String,
                   currentLine: Int,
                   incrementLine: () => Unit): Res[Imports] = synchronized{
-    val wrapperName = Name("cmd" + currentLine)
+    val wrapperName = Name(wrapperNamePrefix + currentLine)
     val fileName = wrapperName.encoded + ".sc"
     for {
       blocks <- Res(parser().splitScript(Interpreter.skipSheBangLine(code), fileName))
