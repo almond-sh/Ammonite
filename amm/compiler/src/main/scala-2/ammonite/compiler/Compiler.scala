@@ -2,6 +2,7 @@ package ammonite.compiler
 
 
 import java.io.OutputStream
+import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
 import ammonite.compiler.iface.{Compiler => ICompiler, Preprocessor}
@@ -281,6 +282,10 @@ object Compiler{
       this.errorLogger = printer.error
       this.warningLogger = printer.warning
       this.infoLogger = printer.info
+
+      if (java.lang.Boolean.getBoolean("ammonite.log-sources"))
+        pprint.err.log(scala.util.Try(new String(src, StandardCharsets.UTF_8)).getOrElse("[error decoding sources]"))
+
       val singleFile = makeFile(src, fileName)
       this.importsLen = importsLen0
       this.userCodeNestingLevel = userCodeNestingLevel
