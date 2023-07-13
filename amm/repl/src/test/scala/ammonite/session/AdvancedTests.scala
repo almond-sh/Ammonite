@@ -746,5 +746,19 @@ object AdvancedTests extends TestSuite{
           """
       )
     }
+
+    test("comment and import") {
+      check.session(
+        """
+          @ import $ivy.`org.typelevel::cats-kernel:2.6.1`
+
+          @ {
+          @   // hello
+          @   import cats.kernel._
+          @ }
+          import cats.kernel._
+        """
+      )
+    }
   }
 }
