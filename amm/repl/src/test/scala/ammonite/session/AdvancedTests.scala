@@ -695,6 +695,20 @@ object AdvancedTests extends TestSuite{
       val files = os.walk(dir).filter(os.isFile(_)).map(_.relativeTo(dir))
       assert(files.sorted == expectedFiles.sorted)
     }
+
+    test("comment and import") {
+      check.session(
+        """
+          @ import $ivy.`org.typelevel::cats-kernel:2.6.1`
+
+          @ {
+          @   // hello
+          @   import cats.kernel._
+          @ }
+          import cats.kernel._
+        """
+      )
+    }
     test("class-path-hook") {
       val sbv = check.scalaBinaryVersion
       check.session(
@@ -747,16 +761,15 @@ object AdvancedTests extends TestSuite{
       )
     }
 
-    test("comment and import") {
+    test("custom wrapper name prefix") {
+      val check = new DualTestRepl {
+        override def wrapperNamePrefix = Some("cell")
+      }
+      // Helper suffix stripped for class-based code wrapping
       check.session(
         """
-          @ import $ivy.`org.typelevel::cats-kernel:2.6.1`
-
-          @ {
-          @   // hello
-          @   import cats.kernel._
-          @ }
-          import cats.kernel._
+          @ val clsName = getClass.getName.stripPrefix("ammonite.$sess.").stripSuffix("Helper")
+          clsName: String = "cell0$"
         """
       )
     }
