@@ -32,7 +32,23 @@
     margin-bottom: 10px;
   }
 
-@sect("Ammonite", "Scala Scripting")
+@sect("(Deprecated) Ammonite", "Scala Scripting")
+
+  @blockquote
+    @b
+      @i
+        NOTE: Ammonite is now deprecated.
+    @ul
+      @li
+        @b
+          @i
+            For Scala scripting functionality, please see the scripting functionality present in the Mill build tool (https://mill-build.org/mill/scalalib/intro.html#_single_file_scripts)
+      @li
+        @b
+          @i
+            For Scala REPL functionality, most of Ammonite's REPL features (Ctrl-C handling, pretty-printed output, dynamically importing libraries, etc.) has been ported
+            to the upstream Scala REPL 3.8.2 and above (@lnk("#24194", "https://github.com/scala/scala3/pull/24194"), @lnk("#23849", "https://github.com/scala/scala3/pull/23849"), @lnk("#24131", "https://github.com/scala/scala3/pull/24131"), etc.)
+
 
   @div(display.flex, alignItems.center, flexDirection.column)
     @i{Version @ammonite.Constants.version}
