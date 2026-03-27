@@ -1,4 +1,4 @@
-# Ammonite [![Build Status][travis-badge]][travis-link] [![Build (Windows)][appveyor-badge]][appveyor-link]  [![Patreon][patreon-badge]][patreon-link]
+# (Deprecated) Ammonite [![Build Status][travis-badge]][travis-link] [![Build (Windows)][appveyor-badge]][appveyor-link]  [![Patreon][patreon-badge]][patreon-link]
 
 [travis-badge]: https://travis-ci.org/lihaoyi/Ammonite.svg
 [travis-link]: https://travis-ci.org/lihaoyi/Ammonite
@@ -6,6 +6,13 @@
 [appveyor-link]: https://ci.appveyor.com/project/lihaoyi/ammonite
 [patreon-badge]: https://img.shields.io/badge/patreon-sponsor-ff69b4.svg
 [patreon-link]: https://www.patreon.com/lihaoyi
+
+> _**NOTE: Ammonite is now deprecated.**_
+> 
+> - _**For Scala scripting functionality, please see the scripting functionality present in the Mill build tool (https://mill-build.org/mill/scalalib/intro.html#_single_file_scripts)**_
+>
+> - _**For Scala REPL functionality, most of Ammonite's REPL features (Ctrl-C handling, pretty-printed output, dynamically importing libraries, etc.) has been ported
+>   to the upstream Scala REPL 3.8.2 and above ([#24194](https://github.com/scala/scala3/pull/24194), [#23849](https://github.com/scala/scala3/pull/23849), [#24131](https://github.com/scala/scala3/pull/24131), etc.)**_
 
 This is where the code for the [Ammonite](https://ammonite.io) 
 project lives:
