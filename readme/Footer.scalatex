@@ -118,8 +118,6 @@
         @a("Ammonite-Repl", href:="https://ammonite.io/api/repl/index.html")
       @li
         @a("Ammonite-Shell", href:="https://ammonite.io/api/shell/index.html")
-      @li
-        @a("Ammonite-Sshd", href:="https://ammonite.io/api/sshd/index.html")
 
     @p
       Although it's best to read the documentation on this page to learn how

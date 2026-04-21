@@ -21,9 +21,6 @@ jobs:
           - java-version: 11
             command: 'terminal.__.test'
 
-          - java-version: 17
-            command: 'sshd[{2.12.21,2.13.18,3.3.7,3.4.3,3.5.2,3.6.4,3.7.4,3.8.1}].__.test'
-
           - java-version: 11
             command: 'amm.repl[2.12.{9,14,21}].__.test'
           - java-version: 17

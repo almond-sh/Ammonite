@@ -5,12 +5,12 @@ The Ammonite codebase is laid out in the following modules, with arrows
 representing dependencies:
 
 ```
-             +-- amm/runtime <----------------+          +---------- shell
-             |        ^                       |          |
-             |        |                       |          |
-             |        +-----+                 |          |
-             |               |                |          |
- amm/util <--+--------- amm/interp <----------+-- amm <--+---------- sshd
+             +-- amm/runtime <----------------+
+             |        ^                       |
+             |        |                       |
+             |        +-----+                 |
+             |               |                |
+ amm/util <--+--------- amm/interp <----------+-- amm <------------- shell
              |               ^                |
              |               |                |
              |               +-----+          |

@@ -105,7 +105,6 @@ While working on an arbitrary `xyz` subproject, `mill -w xyz.test` runs tests af
 - `./mill -i 'amm.repl[2.13.8].test'` tests the Ammonite-REPL.
 - `./mill -i 'terminal[2.13.8].test'` tests the readline re-implementation: keyboard navigation, shortcuts, editing, without any filesystem/scala-repl logic
 - `./mill -i 'integration[2.13.8].test'` kicks off the integration tests, which bundle `amm/` and `shell/` into their respective jars and invoke them as subprocesses. Somewhat slow, but exercises all the command-line-parsing stuff that the other unit tests do not exercise, and makes sure that everything works when run from `.jar`s instead of loose class-files
-- `./mill -i 'sshd[2.13.8].test'` tests the remote Ammonite-REPL over sshd.
 
 ### Publishing
 

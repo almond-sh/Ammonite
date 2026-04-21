@@ -142,7 +142,6 @@ object Deps {
   val shapeless = mvn"com.chuusai::shapeless:2.3.3"
   val slf4jNop = mvn"org.slf4j:slf4j-nop:2.0.17"
   val sourcecode = mvn"com.lihaoyi::sourcecode:0.4.4"
-  val sshdCore = mvn"org.apache.sshd:sshd-core:1.2.0"
   val typename = mvn"org.tpolecat::typename:1.1.0"
   val upickle = mvn"com.lihaoyi::upickle:4.3.2"
 
@@ -790,25 +789,6 @@ trait IntegrationModule extends AmmInternalModule {
   }
 }
 
-object sshd extends Cross[SshdModule](fullCrossScalaVersions)
-trait SshdModule extends AmmModule {
-  def moduleDeps: Seq[PublishModule] = Seq(amm())
-  def isCrossFullScalaVersion = true
-  def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-    // sshd-core 1.3.0 requires java8
-    Deps.sshdCore,
-    Deps.bcprovJdk15on
-  )
-  object test extends AmmTests {
-    def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-      // slf4j-nop makes sshd server use logger that writes into the void
-      Deps.slf4jNop,
-      Deps.jsch,
-      Deps.scalacheck
-    )
-  }
-}
-
 /**
  * Selects all cross module instances, that match the given predicate.
  * In Mill 0.11, this can be hopefully replaced with a simple filter on the `crossValue`.
@@ -832,8 +812,7 @@ def unitTest(scalaVersion: String = "")
   val tests = Seq(
     selectCrossPrefix(terminal, binPred)(_.test),
     selectCrossPrefix(amm.repl, pred)(_.test),
-    selectCrossPrefix(amm, pred)(_.test),
-    selectCrossPrefix(sshd, pred)(_.test)
+    selectCrossPrefix(amm, pred)(_.test)
   ).flatten
 
   val log = Task.Anon { Task.log.streams.out.println(s"Testing modules: ${tests.mkString(", ")}") }

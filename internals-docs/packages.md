@@ -12,9 +12,6 @@ The main static packages containing Ammonite code are:
 
 - `ammonite`: the main Ammonite REPL
 
-- `ammonite.sshd`: spin up an Ammonite server in any existing process you can
-  connect to via SSH
-
 Each of these has its own unit tests, along with the integration suite in
 
 - `ammonite.integration`: tests that package up the Ammonite jar, spawn
