@@ -101,13 +101,11 @@ val (buildVersion, unstable) = scala.util.Try(
   case Some(tagName) => (tagName, false)
 }
 
-val bspVersion = "2.1.1"
 val fastparseVersion = "3.1.1"
 val scalametaVersion = "4.15.2"
 
 object Deps {
   val acyclic = mvn"com.lihaoyi:::acyclic:0.3.21"
-  val bsp4j = mvn"ch.epfl.scala:bsp4j:$bspVersion"
   val bcprovJdk15on = mvn"org.bouncycastle:bcprov-jdk18on:1.82"
   val cask = mvn"com.lihaoyi::cask:0.10.2"
   val classPathUtil = mvn"io.get-coursier::class-path-util:0.1.4"
@@ -145,8 +143,6 @@ object Deps {
   val slf4jNop = mvn"org.slf4j:slf4j-nop:2.0.17"
   val sourcecode = mvn"com.lihaoyi::sourcecode:0.4.4"
   val sshdCore = mvn"org.apache.sshd:sshd-core:1.2.0"
-  val scalametaSemantidbShared = mvn"org.scalameta::semanticdb-shared:$scalametaVersion"
-  val scalametaSemantidbShared213 = mvn"org.scalameta:semanticdb-shared_2.13:$scalametaVersion"
   val typename = mvn"org.tpolecat::typename:1.1.0"
   val upickle = mvn"com.lihaoyi::upickle:4.3.2"
 
@@ -522,23 +518,15 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
       Seq(amm.util(), amm.runtime(), amm.compiler.interface())
     def isCrossFullScalaVersion = true
     def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-      Deps.bsp4j,
       Deps.fastparse
     ) ++ {
       if (isScala3(crossScalaVersion))
         Seq(
           Deps.sourcecode,
-          Deps.scalaCollectionCompat,
-          Deps.scalametaSemantidbShared213
-            // we remove transitive _2.13 dependencies from Scala 3 and
-            // then we add it back with _3
-            .exclude("com.lihaoyi" -> "sourcecode_2.13")
-            .exclude("org.scala-lang.modules" -> "scala-collection-compat_2.13")
+          Deps.scalaCollectionCompat
         )
       else
-        Seq(
-          Deps.scalametaSemantidbShared
-        )
+        Nil
     }
   }
 
@@ -568,7 +556,7 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
                                                                    )))
 
       def generatedSources: T[Seq[PathRef]] = Task {
-        Seq(PathRef(generateConstantsFile(buildVersion, bspVersion = bspVersion)))
+        Seq(PathRef(generateConstantsFile(buildVersion)))
       }
 
       def exposedClassPath: T[Seq[PathRef]] = Task {
@@ -865,7 +853,6 @@ def integrationTest(scalaVersion: String = "") = Task.Command {
 def generateConstantsFile(
     version: String = buildVersion,
     unstableVersion: String = "<fill-me-in-in-Constants.scala>",
-    bspVersion: String = "<fill-me-in-in-Constants.scala>",
     curlUrl: String = "<fill-me-in-in-Constants.scala>",
     unstableCurlUrl: String = "<fill-me-in-in-Constants.scala>",
     oldCurlUrls: Seq[(String, String)] = Nil,
@@ -877,7 +864,6 @@ def generateConstantsFile(
     object Constants{
       val version = "$version"
       val unstableVersion = "$unstableVersion"
-      val bspVersion = "$bspVersion"
       val curlUrl = "$curlUrl"
       val unstableCurlUrl = "$unstableCurlUrl"
       val oldCurlUrls = Seq[(String, String)](
@@ -1009,7 +995,6 @@ def publishDocs(skipDeploy: Boolean = false): Command[Unit] = {
     val constantsFile = generateConstantsFile(
       latestTaggedVersion,
       buildVersion,
-      bspVersion,
       s"https://github.com/$ghOrg/$ghRepo/releases/download/$stableKey",
       s"https://github.com/$ghOrg/$ghRepo/releases/download/$unstableKey",
       for (k <- oldStableKeys)

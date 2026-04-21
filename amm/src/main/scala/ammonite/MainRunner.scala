@@ -6,7 +6,6 @@ import java.nio.file.NoSuchFileException
 
 import ammonite.compiler.iface.{CodeWrapper, CompilerBuilder, Parser}
 import ammonite.compiler.{CodeClassWrapper, DefaultCodeWrapper}
-import ammonite.interp.script.AmmoniteBuildServer
 import ammonite.interp.{Interpreter, PredefInitialization, Watchable}
 import ammonite.main._
 import ammonite.runtime.{Frame, ImportHook, Storage}

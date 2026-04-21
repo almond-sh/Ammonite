@@ -281,19 +281,6 @@ object BasicTests extends TestSuite {
       }
     }
 
-    test("BSP") {
-      val jsonrpc = """{"jsonrpc": "2.0", "id": 1, "method": "build/shutdown", "params": null}"""
-        .getBytes("UTF-8")
-      val input = Array(
-        s"Content-Length: ${jsonrpc.length}",
-        "\r\n" * 2
-      ).flatMap(_.getBytes("UTF-8")) ++ jsonrpc
-      val res = os.proc(TestUtils.executable, "--bsp").call(
-        stdin = input
-      )
-      assert(res.exitCode == 0)
-    }
-
     test("predef throws") {
       val res =
         os.proc(TestUtils.executable, "--predef-code", """throw new Exception("from predef")""")

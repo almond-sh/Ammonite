@@ -23,7 +23,6 @@ class SingleScriptCompiler(
     classPathWhitelist: Set[Seq[String]],
     codeWrapper: CodeWrapper,
     wd: Option[os.Path],
-    generateSemanticDbs: Boolean,
     settings: Seq[String],
     module: Script,
     dependencies: Script.ResolvedDependencies,
@@ -121,50 +120,6 @@ class SingleScriptCompiler(
         os.write.over(dest0, b, createFolders = true)
       }
     }
-
-  private def updateSemanticDbs(
-      blocksOffsetAndCode: Vector[(Int, String)]
-  ): Unit = {
-
-    def adjust(blockIdx: Int): (Int, Int) => Option[(Int, Int)] =
-      if (module.blocks.isEmpty) // can happen if there were errors during preprocessing
-        (_, _) => None
-      else {
-        val startOffsetInSc = module.blocks(blockIdx - 1).startIdx
-        val startPosInSc = offsetToPosSc(startOffsetInSc)
-
-        PositionOffsetConversion.scalaPosToScPos(
-          module.code,
-          startPosInSc.line,
-          startPosInSc.char,
-          blocksOffsetAndCode(blockIdx - 1)._2,
-          blocksOffsetAndCode(blockIdx - 1)._1
-        )
-      }
-
-    for {
-      target <- moduleTarget
-      segments0 <- module.segments(wd)
-    } {
-      // TODO Merge the semantic DBs of all the blocks rather than just pick the last one
-      val name = Interpreter.indexWrapperName(
-        module.codeSource.wrapperName,
-        module.blocks.length
-      )
-      // See comment above above in writeSource about the use of Name.raw rather than Name.encoded.
-      val origRelPath = os.SubPath(
-        module
-          .codeSource
-          .pkgName
-          .map(_.raw)
-          .toVector :+
-          s"${name.raw}.scala"
-      )
-      val destRelPath = os.SubPath(segments0.toVector)
-
-      SemanticdbProcessor.postProcess(module, wd, adjust, target, origRelPath, destRelPath)
-    }
-  }
 
   private def compileBlock(
       scriptImports: Imports,
@@ -269,12 +224,6 @@ class SingleScriptCompiler(
 
       case Res.Success(output) =>
         writeByteCode(output.flatMap(_._3.classFiles))
-        if (generateSemanticDbs) {
-          val blocksOffsetAndCode = output
-            .map { case (offset, code, _) => (offset, code) }
-            .toVector
-          updateSemanticDbs(blocksOffsetAndCode)
-        }
         Right(output.map(_._3))
 
       case Res.Exception(ex, msg) =>

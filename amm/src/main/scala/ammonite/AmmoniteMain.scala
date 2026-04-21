@@ -5,7 +5,6 @@ import java.io.{InputStream, OutputStream, PrintStream}
 import ammonite.compiler.DefaultCodeWrapper
 import ammonite.compiler.iface.CompilerBuilder
 import ammonite.interp.PredefInitialization
-import ammonite.interp.script.AmmoniteBuildServer
 import ammonite.main._
 import ammonite.util.Util.newLine
 import ammonite.util._
@@ -54,22 +53,7 @@ object AmmoniteMain {
         printErr.println(msg)
         false
       case Right(cliConfig) =>
-        if (cliConfig.core.bsp.value) {
-          val buildServer = new AmmoniteBuildServer(
-            ammonite.compiler.CompilerBuilder(),
-            ammonite.compiler.Parsers,
-            ammonite.compiler.DefaultCodeWrapper,
-            initialScripts = cliConfig.rest.value.map(os.Path(_)),
-            initialImports = PredefInitialization.initBridges(
-              Seq("ammonite.interp.api.InterpBridge" -> "interp")
-            ) ++ AmmoniteBuildServer.defaultImports
-          )
-          printErr.println("Starting BSP server")
-          val (launcher, shutdownFuture) = AmmoniteBuildServer.start(buildServer)
-          Await.result(shutdownFuture, Duration.Inf)
-          printErr.println("BSP server done")
-          true
-        } else if (cliConfig.core.showVersion.value) {
+        if (cliConfig.core.showVersion.value) {
           printOut.println(customName)
           true
         } else {

@@ -19,7 +19,6 @@ final class ScriptCompiler(
     classPathWhitelist: Set[Seq[String]],
     wd: Option[os.Path],
     outputDirectory: Option[os.Path],
-    generateSemanticDbs: Boolean,
     inMemoryCache: Boolean
 ) {
 
@@ -79,7 +78,7 @@ final class ScriptCompiler(
       module: Script,
       dependencies: Script.ResolvedDependencies
   ): ScriptCompileResult =
-    compileIfNeeded(moduleSettings(module), module, dependencies)
+    compileIfNeeded(Nil, module, dependencies)
 
   /**
    * Reads compilation output from cache.
@@ -87,10 +86,8 @@ final class ScriptCompiler(
   def compileFromCache(
       script: Script,
       dependencies: Script.ResolvedDependencies
-  ): Option[ScriptCompileResult] = {
-    val settingsArgs = moduleSettings(script)
-    compileFromCache(settingsArgs, script, dependencies)
-  }
+  ): Option[ScriptCompileResult] =
+    compileFromCache(Nil, script, dependencies)
 
   private def moduleOutput(module: Script): Option[os.Path] =
     for {
@@ -104,27 +101,6 @@ final class ScriptCompiler(
   def moduleTarget(module: Script): Option[os.Path] =
     moduleOutput(module).map(_ / "target")
 
-  /** Arguments passed to scalac to compile this script */
-  def moduleSettings(module: Script): List[String] =
-    if (generateSemanticDbs) {
-      val isScala2 = compilerBuilder.scalaVersion.startsWith("2.")
-      if (isScala2)
-        List(
-          "-Yrangepos",
-          "-P:semanticdb:failures:warning",
-          "-P:semanticdb:synthetics:on"
-        ) ++
-          moduleSources(module).map(d => s"-P:semanticdb:sourceroot:${d.toNIO.toAbsolutePath}") ++
-          moduleTarget(module).map(d => s"-P:semanticdb:targetroot:${d.toNIO.toAbsolutePath}")
-      else
-        List("-Xsemanticdb") ++
-          moduleSources(module).toList
-            .flatMap(d => Seq("-sourceroot", d.toNIO.toAbsolutePath.toString)) ++
-          moduleTarget(module).toList
-            .flatMap(d => Seq("-semanticdb-target", d.toNIO.toAbsolutePath.toString))
-    } else
-      Nil
-
   /** Writes on disk the source passed to scalac, corresponding to this script */
   def preCompile(module: Script): Unit = {
 
@@ -137,8 +113,7 @@ final class ScriptCompiler(
       classPathWhitelist,
       codeWrapper,
       wd,
-      generateSemanticDbs,
-      moduleSettings(module),
+      Nil,
       module,
       Script.ResolvedDependencies(Nil, Nil, Nil),
       moduleTarget(module),
@@ -225,7 +200,6 @@ final class ScriptCompiler(
       classPathWhitelist,
       codeWrapper,
       wd,
-      generateSemanticDbs,
       settingsArgs,
       module,
       dependencies,
