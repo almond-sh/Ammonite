@@ -8,13 +8,13 @@
 [patreon-link]: https://www.patreon.com/lihaoyi
 
 > _**NOTE: Ammonite is now deprecated.**_
-> 
+>
 > - _**For Scala scripting functionality, please see the scripting functionality present in the Mill build tool (https://mill-build.org/mill/scalalib/intro.html#_single_file_scripts)**_
 >
 > - _**For Scala REPL functionality, most of Ammonite's REPL features (Ctrl-C handling, pretty-printed output, dynamically importing libraries, etc.) has been ported
 >   to the upstream Scala REPL 3.8.2 and above ([#24194](https://github.com/scala/scala3/pull/24194), [#23849](https://github.com/scala/scala3/pull/23849), [#24131](https://github.com/scala/scala3/pull/24131), etc.)**_
 
-This is where the code for the [Ammonite](https://ammonite.io) 
+This is where the code for the [Ammonite](https://ammonite.io)
 project lives:
 
 - [Ammonite-REPL](https://ammonite.io), the improved Scala REPL
@@ -26,20 +26,20 @@ If you use Ammonite and like it, you will probably enjoy the following book by t
 *Hands-on Scala* has uses Ammonite extensively throughout the book, using
 Ammonite to accomplish a lot of useful tasks: exploring third party libraries or
 writing parallel web-crawlers in the REPL, and implementing entire programming
-languages in Ammonite Scala Scripts. *Hands-on Scala* is a great way to level 
+languages in Ammonite Scala Scripts. *Hands-on Scala* is a great way to level
 up your skills in Scala in general and Ammonite in particular.
 
-If you want to learn more about Ammonite or how to use it, check out the links 
-above, or ask on the [Gitter Channel](https://gitter.im/lihaoyi/Ammonite). The 
-remainder of this document is developer-docs for people who want to work on the 
+If you want to learn more about Ammonite or how to use it, check out the links
+above, or ask on the [Gitter Channel](https://gitter.im/lihaoyi/Ammonite). The
+remainder of this document is developer-docs for people who want to work on the
 Ammonite source code itself.
 
-If you are interested in living more "on the edge", we also publish artifacts 
+If you are interested in living more "on the edge", we also publish artifacts
 and the doc-site every commit; the doc-site is available at
 
 - https://ammonite.io/#UnstableVersions
 
-And contains instructions on how to download the per-commit executable or 
+And contains instructions on how to download the per-commit executable or
 depend on the per-commit maven artifact.
 
 If you use Ammonite and like it, please support us by donating to our Patreon:
@@ -51,14 +51,14 @@ If you use Ammonite and like it, please support us by donating to our Patreon:
 The layout of the repository is roughly:
 
 - `amm/` is [Ammonite](https://ammonite.io)'s core, REPL and script runner
-- `terminal/` is the JLine re-implementation used by Ammonite-REPL to provide 
+- `terminal/` is the JLine re-implementation used by Ammonite-REPL to provide
   syntax highlighting and multiline editing
-- `readme/` is the source code for the [Documentation](https://ammonite.io/#Ammonite-Ops), 
+- `readme/` is the source code for the [Documentation](https://ammonite.io/#Ammonite-Ops),
   written in [Scalatex](https://www.lihaoyi.com/Scalatex/).
-- `published/` is a synthetic project used for publishing, excluding the readme 
+- `published/` is a synthetic project used for publishing, excluding the readme
   and integration tests
 
-For more detailed information, check out the internals documentation for 
+For more detailed information, check out the internals documentation for
 high-level overviews of some interesting facets of the codebase
 
 - [Internals Documentation](https://github.com/com-lihaoyi/Ammonite/tree/main/internals-docs)
@@ -74,7 +74,7 @@ Although most features should be unit tested, it's still useful to fire up a REP
   with multiline input based on the count of open- and closed-parentheses. This
   lets you test all terminal interactions without all the complexity of the
   Scala compiler, classloaders, etc. that comes in `repl/`
-  
+
 - `mill -i -w amm[2.12.6].run` brings up the Ammonite-REPL using the source code
   in the repository, and automatically restarts it on-exit if you have made a
   change to the code. Useful for manual testing both of `amm/` as well as
@@ -82,7 +82,7 @@ Although most features should be unit tested, it's still useful to fire up a REP
   that this does not bring in filesystem utilities like the `wd` variable, `cd!`
   command. You can also pass in the path to a `.sc` file to run it using
   Ammonite's script runner
-  
+
 - `mill -i -w integration[2.12.6].test.run` runs the trivial main method in the
   `integration` subproject, letting you manually test running Ammonite
   programmatically, whether through `run` or `debug`
@@ -105,7 +105,6 @@ While working on an arbitrary `xyz` subproject, `mill -w xyz.test` runs tests af
 - `./mill -i 'amm.repl[2.13.8].test'` tests the Ammonite-REPL.
 - `./mill -i 'terminal[2.13.8].test'` tests the readline re-implementation: keyboard navigation, shortcuts, editing, without any filesystem/scala-repl logic
 - `./mill -i 'integration[2.13.8].test'` kicks off the integration tests, which bundle `amm/` and `shell/` into their respective jars and invoke them as subprocesses. Somewhat slow, but exercises all the command-line-parsing stuff that the other unit tests do not exercise, and makes sure that everything works when run from `.jar`s instead of loose class-files
-- `./mill -i 'sshd[2.13.8].test'` tests the remote Ammonite-REPL over sshd.
 
 ### Publishing
 

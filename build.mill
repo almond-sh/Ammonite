@@ -101,13 +101,11 @@ val (buildVersion, unstable) = scala.util.Try(
   case Some(tagName) => (tagName, false)
 }
 
-val bspVersion = "2.1.1"
 val fastparseVersion = "3.1.1"
 val scalametaVersion = "4.15.2"
 
 object Deps {
   val acyclic = mvn"com.lihaoyi:::acyclic:0.3.21"
-  val bsp4j = mvn"ch.epfl.scala:bsp4j:$bspVersion"
   val bcprovJdk15on = mvn"org.bouncycastle:bcprov-jdk18on:1.82"
   val cask = mvn"com.lihaoyi::cask:0.10.2"
   val classPathUtil = mvn"io.get-coursier::class-path-util:0.1.4"
@@ -144,9 +142,6 @@ object Deps {
   val shapeless = mvn"com.chuusai::shapeless:2.3.3"
   val slf4jNop = mvn"org.slf4j:slf4j-nop:2.0.17"
   val sourcecode = mvn"com.lihaoyi::sourcecode:0.4.4"
-  val sshdCore = mvn"org.apache.sshd:sshd-core:1.2.0"
-  val scalametaSemantidbShared = mvn"org.scalameta::semanticdb-shared:$scalametaVersion"
-  val scalametaSemantidbShared213 = mvn"org.scalameta:semanticdb-shared_2.13:$scalametaVersion"
   val typename = mvn"org.tpolecat::typename:1.1.0"
   val upickle = mvn"com.lihaoyi::upickle:4.3.2"
 
@@ -522,23 +517,15 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
       Seq(amm.util(), amm.runtime(), amm.compiler.interface())
     def isCrossFullScalaVersion = true
     def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-      Deps.bsp4j,
       Deps.fastparse
     ) ++ {
       if (isScala3(crossScalaVersion))
         Seq(
           Deps.sourcecode,
-          Deps.scalaCollectionCompat,
-          Deps.scalametaSemantidbShared213
-            // we remove transitive _2.13 dependencies from Scala 3 and
-            // then we add it back with _3
-            .exclude("com.lihaoyi" -> "sourcecode_2.13")
-            .exclude("org.scala-lang.modules" -> "scala-collection-compat_2.13")
+          Deps.scalaCollectionCompat
         )
       else
-        Seq(
-          Deps.scalametaSemantidbShared
-        )
+        Nil
     }
   }
 
@@ -568,7 +555,7 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
                                                                    )))
 
       def generatedSources: T[Seq[PathRef]] = Task {
-        Seq(PathRef(generateConstantsFile(buildVersion, bspVersion = bspVersion)))
+        Seq(PathRef(generateConstantsFile(buildVersion)))
       }
 
       def exposedClassPath: T[Seq[PathRef]] = Task {
@@ -802,25 +789,6 @@ trait IntegrationModule extends AmmInternalModule {
   }
 }
 
-object sshd extends Cross[SshdModule](fullCrossScalaVersions)
-trait SshdModule extends AmmModule {
-  def moduleDeps: Seq[PublishModule] = Seq(amm())
-  def isCrossFullScalaVersion = true
-  def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-    // sshd-core 1.3.0 requires java8
-    Deps.sshdCore,
-    Deps.bcprovJdk15on
-  )
-  object test extends AmmTests {
-    def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-      // slf4j-nop makes sshd server use logger that writes into the void
-      Deps.slf4jNop,
-      Deps.jsch,
-      Deps.scalacheck
-    )
-  }
-}
-
 /**
  * Selects all cross module instances, that match the given predicate.
  * In Mill 0.11, this can be hopefully replaced with a simple filter on the `crossValue`.
@@ -844,8 +812,7 @@ def unitTest(scalaVersion: String = "")
   val tests = Seq(
     selectCrossPrefix(terminal, binPred)(_.test),
     selectCrossPrefix(amm.repl, pred)(_.test),
-    selectCrossPrefix(amm, pred)(_.test),
-    selectCrossPrefix(sshd, pred)(_.test)
+    selectCrossPrefix(amm, pred)(_.test)
   ).flatten
 
   val log = Task.Anon { Task.log.streams.out.println(s"Testing modules: ${tests.mkString(", ")}") }
@@ -865,7 +832,6 @@ def integrationTest(scalaVersion: String = "") = Task.Command {
 def generateConstantsFile(
     version: String = buildVersion,
     unstableVersion: String = "<fill-me-in-in-Constants.scala>",
-    bspVersion: String = "<fill-me-in-in-Constants.scala>",
     curlUrl: String = "<fill-me-in-in-Constants.scala>",
     unstableCurlUrl: String = "<fill-me-in-in-Constants.scala>",
     oldCurlUrls: Seq[(String, String)] = Nil,
@@ -877,7 +843,6 @@ def generateConstantsFile(
     object Constants{
       val version = "$version"
       val unstableVersion = "$unstableVersion"
-      val bspVersion = "$bspVersion"
       val curlUrl = "$curlUrl"
       val unstableCurlUrl = "$unstableCurlUrl"
       val oldCurlUrls = Seq[(String, String)](
@@ -971,135 +936,3 @@ def publishExecutable() = Task.Command {
     )
   }
 }
-
-def publishDocs(skipDeploy: Boolean = false): Command[Unit] = {
-  val ammoniteAssembly = amm(scala2_13Versions.last).assembly
-  // Disable doc auto-publishing for now, as the recent modularization means we
-  // need to make significant changes to the readme and that'll time.
-  Task.Command {
-    println("MASTER COMMIT: Updating version and publishing to Github Pages")
-
-    if (!skipDeploy) {
-      val deployKey = sys.env("DEPLOY_KEY").replace("\\n", "\n")
-      os.write(BuildCtx.workspaceRoot / "deploy_key", deployKey)
-    }
-
-    val (stableKey, unstableKey, oldStableKeys, oldUnstableKeys) =
-      if (!unstable) {
-        (
-          s"$latestTaggedVersion/2.13-$latestTaggedVersion",
-          s"$latestTaggedVersion/2.13-$latestTaggedVersion",
-          for (v <- Seq("2.12"))
-            yield s"$latestTaggedVersion/$v-$latestTaggedVersion",
-          for (v <- Seq("2.12"))
-            yield s"$latestTaggedVersion/$v-$latestTaggedVersion"
-        )
-      } else {
-        (
-          s"$latestTaggedVersion/2.13-$latestTaggedVersion",
-          s"$latestTaggedVersion/2.13-$buildVersion",
-          for (v <- Seq("2.12"))
-            yield s"$latestTaggedVersion/$v-$latestTaggedVersion",
-          for (v <- Seq("2.12"))
-            yield s"$latestTaggedVersion/$v-$buildVersion"
-        )
-      }
-    println("(stableKey, unstableKey)")
-    println((stableKey, unstableKey))
-    val constantsFile = generateConstantsFile(
-      latestTaggedVersion,
-      buildVersion,
-      bspVersion,
-      s"https://github.com/$ghOrg/$ghRepo/releases/download/$stableKey",
-      s"https://github.com/$ghOrg/$ghRepo/releases/download/$unstableKey",
-      for (k <- oldStableKeys)
-        yield (k, s"https://github.com/$ghOrg/$ghRepo/releases/download/$k"),
-      for (k <- oldUnstableKeys)
-        yield (k, s"https://github.com/$ghOrg/$ghRepo/releases/download/$k"),
-      returnDirectory = false
-    )
-
-    os.proc(
-      "sbt",
-      "readme/run"
-    ).call(
-      cwd = BuildCtx.workspaceRoot,
-      env = Map(
-        "AMMONITE_ASSEMBLY" -> ammoniteAssembly().path.toString,
-        "CONSTANTS_FILE" -> constantsFile.toString
-      )
-    )
-    if (skipDeploy) {
-      println("Skip deployment")
-    } else {
-      println("Deploying ...")
-      os.proc("ci/deploy_master_docs.sh").call(cwd = BuildCtx.workspaceRoot)
-    }
-    ()
-  }
-}
-
-def partition(
-    publishArtifacts: mill.util.Tasks[PublishModule.PublishData],
-    shard: Int,
-    divisionCount: Int
-) = {
-
-  val groupedArtifacts = publishArtifacts.value
-    .map { t =>
-      val taskCrossVersion = t.ctx.crossValues.head
-      // Sort primarily on the scalaVersion, using the rendered name of the
-      // task as the secondary sort key to break ties and ensure determinism
-      t -> (fullCrossScalaVersions.indexOf(taskCrossVersion), t.toString)
-    }
-    .toMap
-
-  val sortedArtifacts = publishArtifacts.value.sortBy(groupedArtifacts)
-
-  val boundaries =
-    for (x <- 0 to divisionCount)
-      yield math.round((x.toDouble * sortedArtifacts.length) / divisionCount).toInt
-
-  sortedArtifacts.slice(boundaries(shard - 1), boundaries(shard))
-
-}
-
-/**
- * Somethime, the Mill publish command fails although the Sonatype publishing went through.
- * This command checks, whether all artifacts are publshed.
- * Run with:
- * {{{
- * mill checkPublishedArtifacts --artifacts __.publishSelfDependency --version {version} --ttl "1 sec"
- * }}}
- * See also https://github.com/com-lihaoyi/Ammonite/pull/1453
- */
-def checkPublishedArtifacts(
-    artifacts: mill.util.Tasks[Artifact],
-    version: String,
-    ttl: String = "1 hour"
-) =
-  Task.Command {
-    val coords = Task.sequence(artifacts.value)()
-    val next = new AtomicInteger(0)
-    val fut = coords.map { coord =>
-      Future {
-        val dep = s"${coord.group}:${coord.id}:$version"
-        println(s"[${next.incrementAndGet()}/${coords.size}] Checking $dep")
-        val res = os.proc("cs", "complete-dep", dep, "-l", ttl)
-          .call().out.text().trim()
-        // println(res)
-        Option.when(!res.contains(version))(dep)
-      }(using ExecutionContext.global)
-    }
-    val missing = fut.flatMap(Await.result(_, duration.Duration.Inf))
-    if (missing.isEmpty) {
-      Result.Success(s"All artifacts published for version $version")
-    } else {
-      val msg =
-        if (missing.size == coords.size) s"All artifacts missing for version $version"
-        else s"Missing ${missing.size} of ${coords.size} published artifacts: ${
-            missing.mkString("\n- ", "\n- ", "")
-          }"
-      Result.Failure(msg)
-    }
-  }

@@ -30,8 +30,6 @@ object Config {
         doc = "Watch and re-run your scripts when they change"
       )
       watch: Flag,
-      @arg(doc = "Run a BSP server against the passed scripts")
-      bsp: Flag,
       @arg(
         short = 'c',
         doc = "Pass in code to be run immediately in the REPL"
