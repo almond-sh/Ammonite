@@ -327,7 +327,7 @@ trait AmmModule extends AmmInternalModule with SonatypeCentralPublishModule with
   def publishVersion: T[String] = buildVersion
   def pomSettings = PomSettings(
     description = artifactName(),
-    organization = "com.lihaoyi",
+    organization = "sh.almond.ammonite",
     url = s"https://github.com/${ghOrg}/${ghRepo}",
     licenses = Seq(License.MIT),
     versionControl = VersionControl.github(ghOrg, ghRepo),
