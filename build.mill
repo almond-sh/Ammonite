@@ -1,3 +1,4 @@
+//| mill-version: 1.1.7
 //| mvnDeps:
 //| - io.get-coursier:coursier-launcher_2.13:2.1.25-M19
 package build
@@ -137,6 +138,10 @@ trait AmmInternalModule extends CrossSbtModule {
   // We need it to be a Boolean, not T[Boolean]
   def isCrossFullScalaVersion: Boolean = false
   def crossFullScalaVersion: T[Boolean] = Task { isCrossFullScalaVersion }
+  override def jvmVersion: T[String] = Task {
+    if (Version(scalaVersion()) >= Version("3.8.0")) "17"
+    else "11"
+  }
   def artifactName: T[String] = Task {
     "ammonite-" + moduleSegments.parts.dropRight(1).mkString("-").stripPrefix("amm-")
   }
