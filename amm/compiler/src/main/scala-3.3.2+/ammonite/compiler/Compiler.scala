@@ -154,7 +154,7 @@ class Compiler(
       override protected def frontendPhases: List[List[Phase]] =
         CompilerHelper.frontEndPhases ++
         List(
-          List(new semanticdb.ExtractSemanticDB.ExtractSemanticInfo),
+          List(semanticdb.AmmoniteSemanticDB.extractSemanticInfo),
           List(new AmmonitePhase(userCodeNestingLevel, userCodeNestingLevel == 2)),
           List(new PostTyper)
         )

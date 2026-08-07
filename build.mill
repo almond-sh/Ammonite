@@ -53,7 +53,7 @@ val scala2_13Versions = 3.to(18)
   .map(v => s"2.13.$v")
 
 val scala3Lts = "3.3.7"
-val scala3Latest = "3.8.1"
+val scala3Latest = "3.8.4"
 
 val scala2Versions = scala2_12Versions ++ scala2_13Versions
 val scala3Versions = Seq(scala3Lts, scala3Latest)

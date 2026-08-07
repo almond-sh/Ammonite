@@ -9,7 +9,7 @@ case class DirectoryClassPath(dir: JFile)
     extends classpath.JFileDirectoryLookup[classpath.BinaryFileEntry]
     with classpath.NoSourcePaths {
 
-  def findClassFile(className: String): Option[AbstractFile] = {
+  override def findClassFile(className: String): Option[AbstractFile] = {
     val relativePath = classpath.FileUtils.dirPath(className)
     val classFile = new JFile(dir, relativePath + ".class")
     if (classFile.exists) {
@@ -18,6 +18,18 @@ case class DirectoryClassPath(dir: JFile)
       Some(abstractClassFile)
     } else None
   }
+
+  override def findClassFileAndModuleFile(
+      className: String,
+      findModule: Boolean
+  ): Option[(AbstractFile, Option[AbstractFile])] =
+    findClassFile(className).map { classFile =>
+      val moduleFile = Option
+        .when(findModule)(new JFile(dir, "module-info.class"))
+        .filter(_.exists)
+        .map(file => new PlainFile(new dotty.tools.io.File(file.toPath)))
+      (classFile, moduleFile)
+    }
 
   protected def createFileEntry(file: AbstractFile): classpath.BinaryFileEntry =
     classpath.BinaryFileEntry(file)
