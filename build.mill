@@ -92,8 +92,8 @@ val latestAssemblies = assemblyCrossScalaVersions.map(amm(_).assembly)
 
 println("GITHUB REF " + sys.env.get("GITHUB_REF"))
 
-val (buildVersion, unstable) = scala.util.Try(
-  os.proc("git", "describe", "--exact-match", "--tags", "--always", gitHead)
+val (buildVersion, isUnstableBuild) = scala.util.Try(
+  os.proc("git", "describe", "--exact-match", "--tags", gitHead)
     .call()
     .out
     .trim()
@@ -331,7 +331,10 @@ trait AmmInternalModule extends CrossSbtModule {
     }
 }
 trait AmmModule extends AmmInternalModule with SonatypeCentralPublishModule with CoursierModule {
-  def publishVersion: T[String] = buildVersion
+  def publishVersion: T[String] = Task {
+    if (isUnstableBuild) s"$buildVersion-SNAPSHOT"
+    else buildVersion
+  }
   def pomSettings = PomSettings(
     description = artifactName(),
     organization = "sh.almond.ammonite",
@@ -900,7 +903,7 @@ def publishExecutable() = Task.Command {
   val latestAssemblyJars = Task.sequence(latestAssemblies)()
 
   println("MASTER COMMIT: Creating a release")
-  if (!unstable) {
+  if (!isUnstableBuild) {
     requests.post(
       url = s"https://api.github.com/repos/$ghOrg/$ghRepo/releases",
       data = requests.RequestBlob.ByteSourceRequestBlob {
