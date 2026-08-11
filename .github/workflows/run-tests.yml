@@ -19,11 +19,7 @@ jobs:
       scala-matrix: ${{ steps.versions.outputs.scala-matrix }}
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-java@v5
-        with:
-          java-version: 21
-          distribution: temurin
-      - name: List Scala and Java versions
+      - name: List Scala versions
         id: versions
         run: |
           matrix=$(./mill --silent show ciScalaVersions)
@@ -42,12 +38,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-java@v5
-        with:
-          java-version: ${{ matrix.java-version }}
-          distribution: temurin
-      - name: Setup sbt launcher
-        uses: sbt/setup-sbt@v1
       - name: Test terminal
         if: matrix.scala-version == '2.12.9'
         run: ./mill -i -j1 -k 'terminal.__.test'
@@ -67,10 +57,6 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-java@v5
-        with:
-          java-version: ${{ matrix.java-version }}
-          distribution: temurin
       - name: Setup sbt launcher
         uses: sbt/setup-sbt@v1
       - run: ./mill -i -j1 -k 'integration[${{ matrix.scala-version }}].__.test'
@@ -81,8 +67,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-java@v5
-        with:
-          java-version: 17
-          distribution: temurin
       - run: ./mill -i -k -j1 '__.compile'
