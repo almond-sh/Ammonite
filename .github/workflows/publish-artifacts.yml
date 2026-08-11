@@ -26,4 +26,9 @@ jobs:
           distribution: 'temurin'
           java-version: 17
       - name: Publish to Maven Central
-        run: ./mill -i mill.scalalib.SonatypeCentralPublishModule/
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            ./mill -i mill.scalalib.SonatypeCentralPublishModule/ --bundleName "ammonite-${GITHUB_REF#refs/tags/v}"
+          else
+            ./mill -i mill.scalalib.SonatypeCentralPublishModule/
+          fi
