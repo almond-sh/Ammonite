@@ -72,18 +72,18 @@ def isScala2_12_10OrLater(sv: String): Boolean = {
 val fullCrossScalaVersions = scala2Versions ++ scala3Versions
 
 def ciScalaVersions = Task {
-  def entries(versions: Seq[String], javaVersion: String, includeMiddle: Boolean) = {
+  def entries(versions: Seq[String], includeMiddle: Boolean) = {
     val selected =
       if (includeMiddle) Seq(versions.head, versions(versions.length / 2), versions.last)
       else Seq(versions.head, versions.last)
-    selected.map(version => Map("scala-version" -> version, "java-version" -> javaVersion))
+    selected.map(version => Map("scala-version" -> version))
   }
 
   Map(
     "include" -> (
-      entries(scala2_12Versions, "11", includeMiddle = true) ++
-        entries(scala2_13Versions, "17", includeMiddle = true) ++
-        entries(scala3Versions, "21", includeMiddle = false)
+      entries(scala2_12Versions, includeMiddle = true) ++
+        entries(scala2_13Versions, includeMiddle = true) ++
+        entries(scala3Versions, includeMiddle = false)
     )
   )
 }
@@ -155,10 +155,11 @@ trait AmmInternalModule extends CrossSbtModule {
   // We need it to be a Boolean, not T[Boolean]
   def isCrossFullScalaVersion: Boolean = false
   def crossFullScalaVersion: T[Boolean] = Task { isCrossFullScalaVersion }
-  override def jvmVersion: T[String] = Task {
+  def releaseVersion: T[String] = Task {
     if (Version(scalaVersion()) >= Version("3.8.0")) "17"
     else "11"
   }
+  override def jvmVersion: T[String] = releaseVersion
   def artifactName: T[String] = Task {
     "ammonite-" + moduleSegments.parts.dropRight(1).mkString("-").stripPrefix("amm-")
   }
@@ -167,10 +168,7 @@ trait AmmInternalModule extends CrossSbtModule {
     val maybeAcyclicOptions =
       if (isScala2()) Seq("-P:acyclic:force")
       else Nil
-    val targetRelease =
-      if (Version(scalaVersion()) >= Version("3.8.0")) "17"
-      else "11"
-    val releaseOptions = Seq("-release", targetRelease)
+    val releaseOptions = Seq("-release", releaseVersion())
     maybeAcyclicOptions ++ releaseOptions
   }
   def compileMvnDeps: T[Seq[Dep]] = Task {
@@ -355,7 +353,7 @@ trait AmmModule extends AmmInternalModule with SonatypeCentralPublishModule with
     )()
   }
 
-  override def javacOptions: T[Seq[String]] = Seq("-source", "1.8", "-target", "1.8")
+  override def javacOptions: T[Seq[String]] = Task { Seq("--release", "8") }
 
   def docSources = Task {
     val sv = scalaVersion()
