@@ -83,15 +83,17 @@ val latestAssemblies = assemblyCrossScalaVersions.map(amm(_).assembly)
 println("GITHUB REF " + sys.env.get("GITHUB_REF"))
 
 def latestVersionTag(commit: Option[String] = None) =
-  os.proc(
-    "git",
-    "describe",
-    "--abbrev=0",
-    "--tags",
-    "--match",
-    "v*",
-    commit.toSeq
-  ).call().out.trim()
+  scala.util.Try(
+    os.proc(
+      "git",
+      "describe",
+      "--abbrev=0",
+      "--tags",
+      "--match",
+      "v*",
+      commit.toSeq
+    ).call().out.trim()
+  ).toOption
 
 val headVersionTag = scala.util.Try(
   os.proc("git", "describe", "--exact-match", "--tags", "--match", "v*", gitHead)
@@ -108,16 +110,20 @@ val ciTag =
   else None
 
 val publishVersion = {
-  val tag = headVersionTag match {
+  val tagOpt = headVersionTag match {
     case Some(tag) if sys.env.contains("CI") && !ciTag.contains(tag) =>
       latestVersionTag(Some(s"$gitHead^"))
     case _ => latestVersionTag()
   }
-  val version = tag.stripPrefix("v")
-  if (headVersionTag.contains(tag) && (!sys.env.contains("CI") || ciTag.contains(tag))) version
-  else {
-    val components = version.split('.').toSeq
-    (components.init :+ (components.last.toInt + 1)).mkString(".") + "-SNAPSHOT"
+  tagOpt match {
+    case None => "3.0.10-SNAPSHOT"
+    case Some(tag) =>
+      val version = tag.stripPrefix("v")
+      if (headVersionTag.contains(tag) && (!sys.env.contains("CI") || ciTag.contains(tag))) version
+      else {
+        val components = version.split('.').toSeq
+        (components.init :+ (components.last.toInt + 1)).mkString(".") + "-SNAPSHOT"
+      }
   }
 }
 

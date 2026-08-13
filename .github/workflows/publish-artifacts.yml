@@ -21,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Publish to Maven Central
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then

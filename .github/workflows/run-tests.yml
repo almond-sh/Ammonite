@@ -19,6 +19,8 @@ jobs:
       scala-matrix: ${{ steps.versions.outputs.scala-matrix }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: List Scala versions
         id: versions
         run: |
@@ -38,6 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Test terminal
         if: matrix.scala-version == '2.12.9'
         run: ./mill -i -j1 -k 'terminal.__.test'
@@ -67,4 +71,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: ./mill -i -k -j1 '__.compile'
