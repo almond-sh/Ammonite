@@ -37,16 +37,6 @@ val latestTaggedVersion =
 
 val gitHead = os.proc("git", "rev-parse", "HEAD").call().out.trim()
 
-val commitsSinceTaggedVersion = latestTaggedVersion match {
-  case "dev" => 0
-  case latest =>
-    os.proc("git", "rev-list", gitHead, "--not", latest, "--count")
-      .call()
-      .out
-      .trim()
-      .toInt
-}
-
 val scala2_12Versions = 9.to(21)
   .map(v => s"2.12.$v")
 val scala2_13Versions = 3.to(18)
@@ -92,17 +82,46 @@ val latestAssemblies = assemblyCrossScalaVersions.map(amm(_).assembly)
 
 println("GITHUB REF " + sys.env.get("GITHUB_REF"))
 
-val (buildVersion, isUnstableBuild) = scala.util.Try(
-  os.proc("git", "describe", "--exact-match", "--tags", gitHead)
+def latestVersionTag(commit: Option[String] = None) =
+  os.proc(
+    "git",
+    "describe",
+    "--abbrev=0",
+    "--tags",
+    "--match",
+    "v*",
+    commit.toSeq
+  ).call().out.trim()
+
+val headVersionTag = scala.util.Try(
+  os.proc("git", "describe", "--exact-match", "--tags", "--match", "v*", gitHead)
     .call()
     .out
     .trim()
-).toOption match {
-  case None =>
-    val gitHash = os.proc("git", "rev-parse", "--short", "HEAD").call().out.trim()
-    (s"$latestTaggedVersion-$commitsSinceTaggedVersion-$gitHash", true)
-  case Some(tagName) => (tagName, false)
+).toOption
+
+val ciTag =
+  if (sys.env.contains("CI"))
+    sys.env.get("GITHUB_REF").collect {
+      case ref if ref.startsWith("refs/tags/") => ref.stripPrefix("refs/tags/")
+    }
+  else None
+
+val publishVersion = {
+  val tag = headVersionTag match {
+    case Some(tag) if sys.env.contains("CI") && !ciTag.contains(tag) =>
+      latestVersionTag(Some(s"$gitHead^"))
+    case _ => latestVersionTag()
+  }
+  val version = tag.stripPrefix("v")
+  if (headVersionTag.contains(tag) && (!sys.env.contains("CI") || ciTag.contains(tag))) version
+  else {
+    val components = version.split('.').toSeq
+    (components.init :+ (components.last.toInt + 1)).mkString(".") + "-SNAPSHOT"
+  }
 }
+
+val isUnstableBuild = publishVersion.endsWith("-SNAPSHOT")
 
 val fastparseVersion = "3.1.1"
 val scalametaVersion = "4.15.2"
@@ -329,10 +348,7 @@ trait AmmInternalModule extends CrossSbtModule {
     }
 }
 trait AmmModule extends AmmInternalModule with SonatypeCentralPublishModule with CoursierModule {
-  def publishVersion: T[String] = Task {
-    if (isUnstableBuild) s"$buildVersion-SNAPSHOT"
-    else buildVersion
-  }
+  def publishVersion: T[String] = Task { build.publishVersion }
   def pomSettings = PomSettings(
     description = artifactName(),
     organization = "sh.almond.ammonite",
@@ -563,7 +579,7 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
                                                                    )))
 
       def generatedSources: T[Seq[PathRef]] = Task {
-        Seq(PathRef(generateConstantsFile(buildVersion)))
+        Seq(PathRef(generateConstantsFile(build.publishVersion)))
       }
 
       def exposedClassPath: T[Seq[PathRef]] = Task {
@@ -838,7 +854,7 @@ def integrationTest(scalaVersion: String = "") = Task.Command {
 }
 
 def generateConstantsFile(
-    version: String = buildVersion,
+    version: String = publishVersion,
     unstableVersion: String = "<fill-me-in-in-Constants.scala>",
     curlUrl: String = "<fill-me-in-in-Constants.scala>",
     unstableCurlUrl: String = "<fill-me-in-in-Constants.scala>",
@@ -907,9 +923,9 @@ def publishExecutable() = Task.Command {
       data = requests.RequestBlob.ByteSourceRequestBlob {
         ujson.write(
           ujson.Obj(
-            "tag_name" -> buildVersion,
-            "name" -> buildVersion,
-            "body" -> s"$homePage/#$buildVersion"
+            "tag_name" -> publishVersion,
+            "name" -> publishVersion,
+            "body" -> s"$homePage/#$publishVersion"
           )
         )
       },
@@ -925,7 +941,7 @@ def publishExecutable() = Task.Command {
     upload(
       uploadedFile = jar.path,
       tagName = latestTaggedVersion,
-      uploadName = s"$scalaBinaryVersion-$buildVersion",
+      uploadName = s"$scalaBinaryVersion-$publishVersion",
       authKey = sys.env("AMMONITE_BOT_AUTH_TOKEN"),
       ghOrg = ghOrg,
       ghRepo = ghRepo
@@ -937,7 +953,7 @@ def publishExecutable() = Task.Command {
           .replace("DEFAULT_SCALA_VERSION=", s"DEFAULT_SCALA_VERSION=$scalaBinaryVersion")
       ),
       tagName = latestTaggedVersion,
-      uploadName = s"$scalaBinaryVersion-$buildVersion-bootstrap",
+      uploadName = s"$scalaBinaryVersion-$publishVersion-bootstrap",
       authKey = sys.env("AMMONITE_BOT_AUTH_TOKEN"),
       ghOrg = ghOrg,
       ghRepo = ghRepo
