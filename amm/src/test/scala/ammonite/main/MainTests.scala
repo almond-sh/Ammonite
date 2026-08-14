@@ -13,6 +13,14 @@ object MainTests extends TestSuite {
   def exec(p: String, args: String*) =
     new InProcessMainMethodRunner(InProcessMainMethodRunner.base / "mains" / p, Nil, args)
 
+  /**
+   * Name of the directory this repository was checked out in, passed by the build.
+   *
+   * Some scripts below have arguments defaulting to `os.pwd`, and print the name of
+   * the directory they get.
+   */
+  val repoDirName = sys.env.getOrElse("AMMONITE_REPO_DIR_NAME", "Ammonite")
+
   def stripInvisibleMargin(s: String): String = {
     val lines = Predef.augmentString(s).lines.toArray
     val leftMargin = lines.filter(_.trim.nonEmpty).map(_.takeWhile(_ == ' ').length).min
@@ -154,18 +162,18 @@ object MainTests extends TestSuite {
         val evaled = exec("Args.sc", "3", "Moo")
         assert(evaled.success)
         assert(
-          evaled.out == ("\"Hello! MooMooMoo Ammonite.\"" + Util.newLine) ||
+          evaled.out == ("\"Hello! MooMooMoo " + repoDirName + ".\"" + Util.newLine) ||
             // For some reason, on windows CI machines the repo gets clone as lowercase (???)
-            evaled.out == ("\"Hello! MooMooMoo ammonite.\"" + Util.newLine)
+            evaled.out == ("\"Hello! MooMooMoo " + repoDirName.toLowerCase + ".\"" + Util.newLine)
         )
       }
       test("manualPrintln") {
         val evaled = exec("Args2.sc", "3", "Moo")
         assert(evaled.success)
         assert(
-          evaled.out == ("Hello! MooMooMoo Ammonite." + Util.newLine) ||
+          evaled.out == ("Hello! MooMooMoo " + repoDirName + "." + Util.newLine) ||
             // For some reason, on windows CI machines the repo gets clone as lowercase (???)
-            evaled.out == ("Hello! MooMooMoo ammonite." + Util.newLine)
+            evaled.out == ("Hello! MooMooMoo " + repoDirName.toLowerCase + "." + Util.newLine)
         )
       }
       val argsUsageMsg =

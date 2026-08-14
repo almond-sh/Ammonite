@@ -37,7 +37,7 @@ val latestTaggedVersion =
 
 val gitHead = os.proc("git", "rev-parse", "HEAD").call().out.trim()
 
-val scala2_12Versions = 9.to(21)
+val scala2_12Versions = 8.to(21)
   .map(v => s"2.12.$v")
 val scala2_13Versions = 3.to(18)
   .map(v => s"2.13.$v")
@@ -69,13 +69,19 @@ def ciScalaVersions = Task {
     selected.map(version => Map("scala-version" -> version))
   }
 
-  Map(
-    "include" -> (
-      entries(scala2_12Versions, includeMiddle = true) ++
-        entries(scala2_13Versions, includeMiddle = true) ++
-        entries(scala3Versions, includeMiddle = false)
-    )
-  )
+  val allEntries =
+    entries(scala2_12Versions, includeMiddle = true) ++
+      entries(scala2_13Versions, includeMiddle = true) ++
+      entries(scala3Versions, includeMiddle = false)
+
+  // The terminal module is cross-built for binCrossScalaVersions only, and its tests
+  // don't depend on the Scala version of the matrix entry - only run them from one entry.
+  val withTerminalFlag = allEntries.zipWithIndex.map {
+    case (entry, idx) =>
+      entry + ("test-terminal" -> (idx == 0).toString)
+  }
+
+  Map("include" -> withTerminalFlag)
 }
 
 val latestAssemblies = assemblyCrossScalaVersions.map(amm(_).assembly)
@@ -140,7 +146,14 @@ val fastparseVersion = "3.1.1"
 val scalametaVersion = "4.15.2"
 
 object Deps {
-  val acyclic = mvn"com.lihaoyi:::acyclic:0.3.21"
+  // acyclic is published for each full Scala version, and no longer gets published
+  // for the oldest Scala versions we support
+  def acyclic(scalaVersion: String) = {
+    val ver =
+      if (Version(scalaVersion) < Version("2.12.9")) "0.3.14"
+      else "0.3.21"
+    mvn"com.lihaoyi:::acyclic:$ver"
+  }
   val bcprovJdk15on = mvn"org.bouncycastle:bcprov-jdk18on:1.82"
   val cask = mvn"com.lihaoyi::cask:0.10.2"
   val classPathUtil = mvn"io.get-coursier::class-path-util:0.1.4"
@@ -204,11 +217,11 @@ trait AmmInternalModule extends CrossSbtModule {
     maybeAcyclicOptions ++ releaseOptions
   }
   def compileMvnDeps: T[Seq[Dep]] = Task {
-    if (isScala2()) Seq(Deps.acyclic)
+    if (isScala2()) Seq(Deps.acyclic(scalaVersion()))
     else Seq[Dep]()
   }
   def scalacPluginMvnDeps: T[Seq[Dep]] = Task {
-    if (isScala2()) Seq(Deps.acyclic)
+    if (isScala2()) Seq(Deps.acyclic(scalaVersion()))
     else Seq[Dep]()
   }
   override def scalaLibraryMvnDeps: T[Seq[Dep]] = Task {
@@ -735,6 +748,13 @@ trait MainModule extends AmmModule {
       super.moduleDeps ++ Seq(amm.compiler().test, amm.repl().test)
     def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
       Deps.scalaJava8Compat
+    )
+
+    // Some tests run scripts whose arguments default to os.pwd, and check the
+    // directory name they end up with - which is the name of the directory this
+    // repository was checked out in.
+    def forkEnv: T[Map[String, String]] = super.forkEnv() ++ Seq(
+      "AMMONITE_REPO_DIR_NAME" -> BuildCtx.workspaceRoot.last
     )
 
     def thinWhitelist: T[PathRef] = Task {
