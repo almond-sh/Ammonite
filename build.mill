@@ -750,6 +750,13 @@ trait MainModule extends AmmModule {
       Deps.scalaJava8Compat
     )
 
+    // Some tests run scripts whose arguments default to os.pwd, and check the
+    // directory name they end up with - which is the name of the directory this
+    // repository was checked out in.
+    def forkEnv: T[Map[String, String]] = super.forkEnv() ++ Seq(
+      "AMMONITE_REPO_DIR_NAME" -> BuildCtx.workspaceRoot.last
+    )
+
     def thinWhitelist: T[PathRef] = Task {
       generateApiWhitelist(
         amm.repl.api().exposedClassPath() ++
