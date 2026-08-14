@@ -69,13 +69,19 @@ def ciScalaVersions = Task {
     selected.map(version => Map("scala-version" -> version))
   }
 
-  Map(
-    "include" -> (
-      entries(scala2_12Versions, includeMiddle = true) ++
-        entries(scala2_13Versions, includeMiddle = true) ++
-        entries(scala3Versions, includeMiddle = false)
-    )
-  )
+  val allEntries =
+    entries(scala2_12Versions, includeMiddle = true) ++
+      entries(scala2_13Versions, includeMiddle = true) ++
+      entries(scala3Versions, includeMiddle = false)
+
+  // The terminal module is cross-built for binCrossScalaVersions only, and its tests
+  // don't depend on the Scala version of the matrix entry - only run them from one entry.
+  val withTerminalFlag = allEntries.zipWithIndex.map {
+    case (entry, idx) =>
+      entry + ("test-terminal" -> (idx == 0).toString)
+  }
+
+  Map("include" -> withTerminalFlag)
 }
 
 val latestAssemblies = assemblyCrossScalaVersions.map(amm(_).assembly)
