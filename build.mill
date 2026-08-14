@@ -129,6 +129,13 @@ val publishVersion = {
 
 val isUnstableBuild = publishVersion.endsWith("-SNAPSHOT")
 
+def emptyDocJar: T[PathRef] = Task {
+  val jar = Task.dest / "out.jar"
+  val zip = new java.util.zip.ZipOutputStream(java.nio.file.Files.newOutputStream(jar.toNIO))
+  zip.close()
+  PathRef(jar)
+}
+
 val fastparseVersion = "3.1.1"
 val scalametaVersion = "4.15.2"
 
@@ -355,6 +362,7 @@ trait AmmInternalModule extends CrossSbtModule {
 }
 trait AmmModule extends AmmInternalModule with SonatypeCentralPublishModule with CoursierModule {
   def publishVersion: T[String] = Task { build.publishVersion }
+  override def docJar: T[PathRef] = Task { build.emptyDocJar() }
   def pomSettings = PomSettings(
     description = artifactName(),
     organization = "sh.almond.ammonite",
@@ -510,20 +518,6 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
       def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
         Deps.coursierInterface
       )
-      override def docJar: T[PathRef] = if (isScala3(crossScalaVersion)) Task {
-        val outDir = Task.ctx().dest
-        val javadocDir = outDir / "javadoc"
-        os.makeDir.all(javadocDir)
-        mill.api.Result.Success {
-          PathRef {
-            mill.util.Jvm.createJar(
-              jar = Task.dest / "out.jar",
-              inputPaths = Seq(javadocDir)
-            )
-          }
-        }
-      }
-      else super.docJar
       def constantsSourceDir: T[PathRef] = Task {
         val dir = Task.dest / "src"
         val dest = dir / "Constants.scala"
