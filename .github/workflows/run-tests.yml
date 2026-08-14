@@ -43,7 +43,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Test terminal
-        if: matrix.scala-version == '2.12.9'
+        if: matrix.scala-version == '2.12.8'
         run: ./mill -i -j1 -k 'terminal.__.test'
       - name: Test Scala ${{ matrix.scala-version }}
         run: |
