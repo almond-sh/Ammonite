@@ -11,7 +11,7 @@ import dotty.tools.dotc.core.Symbols.{Symbol, defn}
 import dotty.tools.dotc.interactive.{Completion, Interactive}
 import dotty.tools.dotc.util.SourcePosition
 
-object AmmCompletion extends AmmCompletionExtras {
+object AmmCompletion extends AmmCompletionExtras with AmmCompletionVersionSpecific {
 
   def completions(
     pos: SourcePosition,
@@ -56,7 +56,7 @@ object AmmCompletion extends AmmCompletionExtras {
       case (_: untpd.ImportSelector) :: Import(expr, _) :: _ =>
         completer.directMemberCompletions(expr)
       case _                                                 =>
-        completer.scopeCompletions.names ++ {
+        scopeCompletionNames(completer) ++ {
           if (enableDeep) completer.deepCompletions
           else Nil
         }
@@ -136,4 +136,3 @@ object AmmCompletion extends AmmCompletionExtras {
     }
 
 }
-
