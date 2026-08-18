@@ -42,7 +42,7 @@ val scala2_12Versions = 8.to(21)
 val scala2_13Versions = 3.to(18)
   .map(v => s"2.13.$v")
 
-val scala3Lts = "3.3.7"
+val scala3Lts = "3.3.8"
 val scala3Latest = "3.8.4"
 
 val scala2Versions = scala2_12Versions ++ scala2_13Versions
@@ -326,9 +326,16 @@ trait AmmInternalModule extends CrossSbtModule {
         Seq(moduleDir / "src" / "main" / "scala-3.5-3.6")
       else
         Nil
+    val extraDir9 =
+      if (Version(sv) == Version("3.3.7"))
+        Seq(moduleDir / "src" / "main" / "scala-3.3.7")
+      else if (Version(sv) >= Version("3.3.8") && Version(sv) < Version("3.4.0"))
+        Seq(moduleDir / "src" / "main" / "scala-3.3.8+")
+      else
+        Nil
 
     val extraDirs: Seq[os.Path] =
-      extraDir ++ extraDir2 ++ extraDir3 ++ extraDir4 ++ extraDir5 ++ extraDir6 ++ extraDir7 ++ extraDir8
+      extraDir ++ extraDir2 ++ extraDir3 ++ extraDir4 ++ extraDir5 ++ extraDir6 ++ extraDir7 ++ extraDir8 ++ extraDir9
 
     extraDirs
   }
