@@ -15,6 +15,7 @@ import mill.scalalib.*
 import mill.scalalib.publish.*
 import mill.javalib.api.JvmWorkerUtil.*
 import mill.javalib.testrunner.TestResult
+import mill.util.Tasks
 import coursier.version.Version
 
 val ghOrg = "com-lihaoyi"
@@ -124,7 +125,8 @@ val publishVersion = {
   tagOpt match {
     case None => "3.0.10-SNAPSHOT"
     case Some(tag) =>
-      val version = tag.stripPrefix("v")
+      // v3.0.10_sv2.12.8_sv3.3.8 publishes as Maven version 3.0.10
+      val version = tag.stripPrefix("v").takeWhile(_ != '_')
       if (headVersionTag.contains(tag) && (!sys.env.contains("CI") || ciTag.contains(tag))) version
       else {
         val components = version.split('.').toSeq
@@ -382,6 +384,9 @@ trait AmmInternalModule extends CrossSbtModule {
 }
 trait AmmModule extends AmmInternalModule with SonatypeCentralPublishModule with CoursierModule {
   def publishVersion: T[String] = Task { build.publishVersion }
+  def publishData: T[mill.javalib.PublishModule.PublishData] = Task {
+    mill.javalib.PublishModule.PublishData(artifactMetadata(), publishArtifactsPayload()())
+  }
   override def docJar: T[PathRef] = Task { build.emptyDocJar() }
   def pomSettings = PomSettings(
     description = artifactName(),
@@ -938,6 +943,56 @@ def generateDependenciesFile(fileName: String, deps: Seq[coursier.Dependency])(i
   os.write(dest, content.getBytes("UTF-8"))
 
   dir
+}
+
+/** Scala versions from `_sv*` tag parts, or `None` to publish every module. */
+def publishScalaVersionsFromTag(tag: String): Option[Seq[String]] =
+  if (!tag.contains('_')) None
+  else {
+    val versions = tag.split('_').toSeq.drop(1).collect {
+      case part if part.startsWith("sv") => part.stripPrefix("sv")
+    }
+    if (versions.isEmpty)
+      sys.error(s"Tag $tag contains '_' but no sv* Scala version parts")
+    Some(versions)
+  }
+
+def publishBundleNameFromTag(tag: String): String =
+  "ammonite-" + tag.stripPrefix("v").replace('_', '-')
+
+def publishModulesForScalaVersions(versions: Option[Seq[String]]): Seq[AmmModule] = {
+  val all = moduleInternal.modules.collect { case m: AmmModule => m }
+  val modules = versions match {
+    case None => all
+    case Some(vs) =>
+      val wanted = vs.toSet
+      all.filter(m => m.isCrossFullScalaVersion && wanted(m.crossScalaVersion))
+  }
+  versions.foreach { vs =>
+    if (modules.isEmpty)
+      sys.error(s"No publishable modules for Scala versions: ${vs.mkString(", ")}")
+  }
+  modules
+}
+
+def publishTag: Option[String] =
+  sys.env.get("GITHUB_REF").collect {
+    case ref if ref.startsWith("refs/tags/") => ref.stripPrefix("refs/tags/")
+  }
+
+def publishMaven(tag: String = "") = {
+  val tagOpt = Option(tag).filter(_.nonEmpty).orElse(publishTag)
+  val artifacts = Tasks(
+    publishModulesForScalaVersions(tagOpt.flatMap(publishScalaVersionsFromTag))
+      .map(_.publishData)
+  )
+  val bundleName = tagOpt.fold("")(publishBundleNameFromTag)
+  Task.Command {
+    mill.javalib.SonatypeCentralPublishModule.publishAll(
+      publishArtifacts = artifacts,
+      bundleName = bundleName
+    )()
+  }
 }
 
 def publishExecutable() = Task.Command {

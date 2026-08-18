@@ -24,9 +24,4 @@ jobs:
         with:
           fetch-depth: 0
       - name: Publish to Maven Central
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            ./mill -i mill.scalalib.SonatypeCentralPublishModule/ --bundleName "ammonite-${GITHUB_REF#refs/tags/v}"
-          else
-            ./mill -i mill.scalalib.SonatypeCentralPublishModule/
-          fi
+        run: ./mill -i publishMaven
