@@ -995,6 +995,31 @@ def publishModulesForScalaVersions(versions: Option[Seq[String]]): Seq[AmmModule
   modules
 }
 
+/**
+ * Lists the artifacts a `publishMaven` for `tag` would push, and fails if two modules
+ * would be published under the same artifact id.
+ *
+ * Maven Central asks projects to keep the number of modules they publish in check, hence
+ * this. Pass a tag to check a Scala-version-specific bundle, like `v3.0.0_sv2.13.16`.
+ */
+def publishedArtifacts(tag: String = "") = {
+  val tagOpt = Option(tag).filter(_.nonEmpty)
+  val modules = publishModulesForScalaVersions(tagOpt.flatMap(publishScalaVersionsFromTag))
+  val artifactIdTasks = modules.map(_.artifactId)
+  Task.Command {
+    val artifactIds = Task.sequence(artifactIdTasks)()
+
+    val duplicates = artifactIds.groupBy(identity).filter(_._2.length > 1).keys.toSeq.sorted
+    if (duplicates.nonEmpty)
+      sys.error(
+        s"Several modules would be published as ${duplicates.mkString(", ")} - " +
+          "see AmmInternalModule.isPublishedCrossInstance"
+      )
+
+    artifactIds.sorted
+  }
+}
+
 def publishTag: Option[String] =
   sys.env.get("GITHUB_REF").collect {
     case ref if ref.startsWith("refs/tags/") => ref.stripPrefix("refs/tags/")

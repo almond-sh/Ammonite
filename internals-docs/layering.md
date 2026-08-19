@@ -120,7 +120,8 @@ Every other module only uses the abstractions in
 `Preprocessor`, `CodeWrapper`), never compiler internals, so they are published
 per *binary* Scala version instead - `ammonite_3`, `ammonite-repl_2.13`,
 `ammonite-util_2.12`, … This keeps the number of modules we publish to Maven
-Central down: one module per Scala version rather than ten.
+Central down: a newly supported Scala version costs one module rather than
+eight, and the whole project publishes 59 modules rather than 262.
 
 Two consequences:
 
@@ -152,3 +153,6 @@ supported Scala version, even though the first two are only published per binary
 version: their test suites and the `amm` assemblies need to run against each
 compiler. `isPublishedCrossInstance` in `build.mill` picks the instances we
 actually publish.
+
+`./mill show publishedArtifacts` lists what a release would push to Maven
+Central, and fails if two module instances would collide on one artifact id.
