@@ -49,8 +49,13 @@ val scala3Latest = "3.8.4"
 val scala2Versions = scala2_12Versions ++ scala2_13Versions
 val scala3Versions = Seq(scala3Lts, scala3Latest)
 
+// Modules that aren't cross-published for full Scala versions are built once per binary Scala
+// version, with the oldest Scala version we support for it: Scala 2 patch releases are only
+// forward binary compatible, so building with 2.13.3 gives us artifacts that all the 2.13.x
+// versions we support can run, while building with 2.13.18 wouldn't. Likewise, TASTy files
+// written by the Scala 3 LTS can be read by all the later Scala 3 versions we support.
 val binCrossScalaVersions =
-  Seq(scala2_12Versions.last, scala2_13Versions.last, scala3Lts)
+  Seq(scala2_12Versions.head, scala2_13Versions.head, scala3Lts)
 val assemblyCrossScalaVersions = Seq(
   scala2_12Versions.last,
   scala2_13Versions.last,
