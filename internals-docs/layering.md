@@ -5,22 +5,14 @@ The Ammonite codebase is laid out in the following modules, with arrows
 representing dependencies:
 
 ```
-             +-- amm/runtime <----------------+
-             |        ^                       |
-             |        |                       |
-             |        +-----+                 |
-             |               |                |
- amm/util <--+--------- amm/interp <----------+-- amm <------------- shell
-             |               ^                |
-             |               |                |
-             |               +-----+          |
-             |                     |          |
-             +------------------- amm/repl <--+
-                                  |
-                                  |
-                                  |
-                                  |
-                   terminal <-----+
+                 +------------- terminal <---+
+                 |                           |
+ amm/util <------+--- amm/repl/api <---------+-- amm/repl <--- amm <--- shell
+      ^                    ^                                    |
+      |                    |                                    |
+      +--- amm/compiler ---+                                    |
+                    ^                                           |
+                    +---------- (ServiceLoader, at run time) ---+
 ```
 
 `amm` is the entry point for the "main" Ammonite REPL. Internally it is
@@ -28,49 +20,60 @@ modularized into submodules to help maintain the layering, and e.g. avoid
 accidental use of unnecessary APIs (and paying their classloading/initialization
 cost) in the core codepaths.
 
-- `amm/util`: basic data-structures and logic common throughout the codebase
+- `amm/util`: basic data-structures and logic common throughout the codebase,
+  along with `ammonite.compiler.iface`, the abstract compiler API
+  (`Compiler`, `CompilerBuilder`, `Parser`, `Preprocessor`, `CodeWrapper`)
+  that lets everything else stay independent of a concrete Scala compiler
 
-- `amm/runtime`: everything necessary to run an Ammonite Scala Script that has
-  already been compiled and cached. This code is the "critical path" for using
-  Ammonite to run slow-changing scripts (i.e. most of them) and should be fast
-  and without heavy dependencies like `scala-compiler`.
+- `amm/repl/api`: the APIs user code sees from within the REPL and from
+  scripts - the rich `ReplAPI`, and the core `InterpAPI` scripts call
 
-- `amm/interp`: everything necessary to run an Ammonite Scala Script that
-  has *not* been compiled and cached; includes `scala-compiler` and `fastparse`
-  and all the code necessary to preprocess Scala source code and compile it
-  into Java bytecode. Does not contain any REPL-specific functionality, and
-  Only provides a core `InterpAPI` for scripts to call, and is without the
-  rich `ReplAPI` for use in the REPL
+- `amm/compiler`: preprocesses Scala source code and compiles it to bytecode.
+  The only module written against compiler internals (`scala-compiler` /
+  `scala3-compiler`), and the only one cross-published for full Scala versions
 
 - `amm/repl`: everything necessary to run an Ammonite REPL that takes in stdin
   and prints to stdout; includes JLine, `ammonite-terminal`, REPL-specific
-  `ReplAPI`s, and other code specific to interactive REPL work
+  `ReplAPI`s, and other code specific to interactive REPL work. Also holds
+
+  - `ammonite.runtime`: everything necessary to run an Ammonite Scala Script
+    that has already been compiled and cached. This code is the "critical path"
+    for using Ammonite to run slow-changing scripts (i.e. most of them) and
+    should be fast and without heavy dependencies like `scala-compiler`.
+
+  - `ammonite.interp`: everything necessary to run an Ammonite Scala Script
+    that has *not* been compiled and cached; drives the compiler through the
+    `ammonite.compiler.iface` abstractions rather than depending on it
 
 - `amm`: contains the Ammonite's main entry-points: for the REPL,
   script-runner, debugger (same as REPL), etc. and associated code for
   marshalling command-line script arguments into the Ammonite's main methods.
+
+Note that `amm` does not depend on `amm/compiler` - it picks a compiler up at
+run time, see "Cross-publishing" below.
 
 There are many classes involved in the Ammonite REPL that can conceivably be
 thought of as "the thing which runs your code". This diagram roughly breaks
 down the relationship between these classes:
 
 ```
-amm:                   Main
-                        |  \
-                        |   \
-                        |    \
-                        |     v
-amm/repl                |    Repl ------------
-                        |     /               |
-                        |    /                v
-                        |   /                FrontEnd
-                        v  v
-amm/compiler:          Interpreter ----------------------------------
-                        |               |              |             |
-                        |               v              v             v
-                        |              Compiler       Pressy        Preprocessor
-                        v
-amm/runtime:           Evaluator
+amm:                        Main
+                             |  \
+                             |   \
+                             |    \
+                             |     v
+amm/repl                     |    Repl ------------
+  (ammonite.repl)            |     /               |
+                             |    /                v
+                             |   /                FrontEnd
+                             v  v
+  (ammonite.interp)         Interpreter ----------------------------------
+                             |               |              |             |
+                             |               v              v             v
+                             |         (amm/compiler, reached through ammonite.compiler.iface)
+                             |              Compiler       Pressy        Preprocessor
+                             v
+  (ammonite.runtime)        Evaluator
 ```
 
 The distribution of responsibilities is
@@ -121,7 +124,7 @@ Every other module only uses the abstractions in
 per *binary* Scala version instead - `ammonite_3`, `ammonite-repl_2.13`,
 `ammonite-util_2.12`, … This keeps the number of modules we publish to Maven
 Central down: a newly supported Scala version costs one module rather than
-eight, and the whole project publishes 59 modules rather than 262.
+eight, and the whole project publishes 47 modules rather than 262.
 
 Two consequences:
 

@@ -489,34 +489,11 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
       (if (isScala3(crossScalaVersion)) Seq.empty[Dep] else Seq(Deps.scalaReflect(scalaVersion())))
   }
 
-  object runtime extends Cross[RuntimeModule](binCrossScalaVersions)
-  trait RuntimeModule extends AmmModule {
-    def moduleDeps: Seq[PublishModule] = Seq(amm.util(), interp.api(), amm.repl.api())
-    def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-      Deps.classPathUtil,
-      Deps.upickle,
-      Deps.requests,
-      Deps.mainargs,
-      Deps.coursierDependencyInterface
-    )
-  }
-
-  object compiler extends Cross[CompilerModule](fullCrossScalaVersions) {
-    object interface extends Cross[CompilerInterfaceModule](binCrossScalaVersions)
-    trait CompilerInterfaceModule extends AmmModule {
-      def moduleDeps: Seq[PublishModule] = Seq(amm.util())
-      def exposedClassPath: T[Seq[PathRef]] = Task {
-        runClasspath() ++
-          externalSources() ++
-          transitiveJars() ++
-          transitiveSourceJars()
-      }
-    }
-  }
+  object compiler extends Cross[CompilerModule](fullCrossScalaVersions)
   trait CompilerModule extends AmmModule {
     def supports3 = true
     def moduleDeps: Seq[PublishModule] =
-      Seq(amm.compiler.interface(), amm.util(), amm.repl.api())
+      Seq(amm.util(), amm.repl.api())
     def isCrossFullScalaVersion = true
     def mvnDeps: T[Seq[Dep]] = Task {
       val scalaSpecificDeps =
@@ -547,15 +524,26 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
     object test extends AmmTests
   }
 
-  object interp extends Cross[InterpModule](binCrossScalaVersions) {
-    object api extends Cross[InterpApiModule](binCrossScalaVersions)
-    trait InterpApiModule extends AmmModule
+//  object `test-runner` extends mill.scalalib.SbtModule {
+//    def scalaVersion = "2.12.8"
+//    def mvnDeps = super.mvnDeps() ++ Seq(
+//      mvn"com.lihaoyi::mill-scalalib:${sys.props("MILL_VERSION")}"
+//    )
+//  }
+
+  object repl extends Cross[ReplModule](fullCrossScalaVersions) {
+
+    object api extends Cross[ReplApiModule](binCrossScalaVersions)
+    trait ReplApiModule extends AmmModule
         with AmmDependenciesResourceFileModule {
-      def moduleDeps: Seq[PublishModule] = Seq(amm.compiler.interface(), amm.util())
-      def dependencyResourceFileName = "amm-interp-api-dependencies.txt"
+      def dependencyResourceFileName = "amm-dependencies.txt"
+      def moduleDeps: Seq[PublishModule] = Seq(amm.util())
       def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
+        Deps.mainargs,
+        Deps.geny,
         Deps.coursierInterface
       )
+
       def constantsSourceDir: T[PathRef] = Task {
         val dir = Task.dest / "src"
         val dest = dir / "Constants.scala"
@@ -570,44 +558,6 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
         os.write(dest, code, createFolders = true)
         PathRef(dir)
       }
-      override def generatedSources: T[Seq[PathRef]] =
-        super.generatedSources() ++ Seq(constantsSourceDir())
-    }
-  }
-  trait InterpModule extends AmmModule {
-    def moduleDeps: Seq[PublishModule] =
-      Seq(amm.util(), amm.runtime(), amm.compiler.interface())
-    def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-      Deps.fastparse
-    ) ++ {
-      if (isScala3(crossScalaVersion))
-        Seq(
-          Deps.sourcecode,
-          Deps.scalaCollectionCompat
-        )
-      else
-        Nil
-    }
-  }
-
-//  object `test-runner` extends mill.scalalib.SbtModule {
-//    def scalaVersion = "2.12.8"
-//    def mvnDeps = super.mvnDeps() ++ Seq(
-//      mvn"com.lihaoyi::mill-scalalib:${sys.props("MILL_VERSION")}"
-//    )
-//  }
-
-  object repl extends Cross[ReplModule](fullCrossScalaVersions) {
-
-    object api extends Cross[ReplApiModule](binCrossScalaVersions)
-    trait ReplApiModule extends AmmModule
-        with AmmDependenciesResourceFileModule {
-      def dependencyResourceFileName = "amm-dependencies.txt"
-      def moduleDeps: Seq[PublishModule] = Seq(amm.util(), interp.api())
-      def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-        Deps.mainargs,
-        Deps.geny
-      )
       def compileMvnDeps: T[Seq[Dep]] = super.compileMvnDeps() ++ (if (isScala3(crossScalaVersion))
                                                                      Seq.empty[Dep]
                                                                    else Seq(Deps.scalaReflect(
@@ -615,7 +565,7 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
                                                                    )))
 
       def generatedSources: T[Seq[PathRef]] = Task {
-        Seq(PathRef(generateConstantsFile(build.publishVersion)))
+        Seq(PathRef(generateConstantsFile(build.publishVersion)), constantsSourceDir())
       }
 
       def exposedClassPath: T[Seq[PathRef]] = Task {
@@ -630,17 +580,31 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
   trait ReplModule extends AmmModule {
     def moduleDeps: Seq[PublishModule] = Seq(
       amm.util(),
-      amm.runtime(),
-      amm.interp(),
-      terminal(),
-      amm.compiler.interface()
+      amm.repl.api(),
+      terminal()
     )
     def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
       Deps.jlineTerminal,
       Deps.jlineJna,
       Deps.jlineReader,
-      Deps.scalaXml(scalaVersion())
-    )
+      Deps.scalaXml(scalaVersion()),
+      // from the former amm.runtime
+      Deps.classPathUtil,
+      Deps.upickle,
+      Deps.requests,
+      Deps.mainargs,
+      Deps.coursierDependencyInterface,
+      // from the former amm.interp
+      Deps.fastparse
+    ) ++ {
+      if (isScala3(crossScalaVersion))
+        Seq(
+          Deps.sourcecode,
+          Deps.scalaCollectionCompat
+        )
+      else
+        Nil
+    }
     def compileMvnDeps: T[Seq[Dep]] =
       super.compileMvnDeps() ++ (if (isScala3(crossScalaVersion)) Seq.empty[Dep]
                                  else Seq(Deps.scalaReflect(scalaVersion())))
@@ -690,10 +654,7 @@ trait MainModule extends AmmModule {
   def moduleDeps: Seq[PublishModule] = Seq(
     terminal(),
     amm.util(),
-    amm.runtime(),
-    amm.interp.api(),
     amm.repl.api(),
-    amm.interp(),
     amm.repl()
   )
 
@@ -711,10 +672,7 @@ trait MainModule extends AmmModule {
     super.runClasspath() ++
       terminal().sources() ++
       amm.util().sources() ++
-      amm.runtime().sources() ++
-      amm.interp.api().sources() ++
       amm.repl.api().sources() ++
-      amm.interp().sources() ++
       amm.repl().sources() ++
       sources() ++
       externalSources()
@@ -804,10 +762,7 @@ trait MainModule extends AmmModule {
         super.runClasspath() ++
         terminal().sources() ++
         amm.util().sources() ++
-        amm.runtime().sources() ++
-        amm.interp.api().sources() ++
         amm.repl.api().sources() ++
-        amm.interp().sources() ++
         amm.repl().sources() ++
         sources() ++
         externalSources()
