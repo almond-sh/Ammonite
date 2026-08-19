@@ -1,12 +1,17 @@
 package ammonite.compiler
 
-import ammonite.compiler.iface.CodeWrapper
+import ammonite.compiler.iface.{CodeWrapper, CompilerBuilderFactory, Parser}
 import ammonite.util._
 import ammonite.util.Util.{CodeSource, newLine, normalizeNewlines}
 
 import scala.language.postfixOps
 
 object CodeClassWrapper extends CodeWrapper {
+
+  // We only need the parser to tell object definitions apart, and can't depend on a concrete
+  // compiler from here - see ammonite.compiler.iface.CompilerBuilderFactory
+  private lazy val parser: Parser = CompilerBuilderFactory.load().parser
+
   /*
    * The goal of this code wrapper is that the user code:
    * - should be in a class rather than a singleton,
@@ -37,7 +42,7 @@ object CodeClassWrapper extends CodeWrapper {
       extraCode: String
   ) = {
     import source.pkgName
-    val isObjDef = Parsers.isObjDef(code)
+    val isObjDef = parser.isObjDef(code)
 
     if (isObjDef) {
       val top = CodeWrapper.packageDirectives(pkgName) + normalizeNewlines(s"""

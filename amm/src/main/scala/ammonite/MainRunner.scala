@@ -4,7 +4,7 @@ import java.io.{InputStream, OutputStream, PrintStream}
 import java.net.URLClassLoader
 import java.nio.file.NoSuchFileException
 
-import ammonite.compiler.iface.{CodeWrapper, CompilerBuilder, Parser}
+import ammonite.compiler.iface.{CodeWrapper, CompilerBuilder, CompilerBuilderFactory, Parser}
 import ammonite.compiler.{CodeClassWrapper, DefaultCodeWrapper}
 import ammonite.interp.{Interpreter, PredefInitialization, Watchable}
 import ammonite.main._
@@ -44,6 +44,10 @@ class MainRunner(
   val colors =
     if (cliConfig.core.color.getOrElse(ammonite.util.Util.isInteractive())) Colors.Default
     else Colors.BlackWhite
+
+  // `ammonite` doesn't depend on `ammonite-compiler` directly - users add the variant matching
+  // their own Scala version - see ammonite.compiler.iface.CompilerBuilderFactory
+  lazy val compilerBuilderFactory = CompilerBuilderFactory.load()
 
   def printInfo(s: String) = errPrintStream.println(colors.info()(s))
   def printError(s: String) = errPrintStream.println(colors.error()(s))
@@ -119,7 +123,7 @@ class MainRunner(
       new Storage.Folder(cliConfig.core.home, isRepl)
     }
 
-    lazy val parser = ammonite.compiler.Parsers
+    lazy val parser = compilerBuilderFactory.parser
     val codeWrapper =
       if (cliConfig.repl.classBased.value) CodeClassWrapper
       else DefaultCodeWrapper
@@ -146,7 +150,7 @@ class MainRunner(
       alreadyLoadedDependencies =
         Defaults.alreadyLoadedDependencies(),
       classPathWhitelist = ammonite.repl.Repl.getClassPathWhitelist(cliConfig.core.thin.value),
-      compilerBuilder = ammonite.compiler.CompilerBuilder(
+      compilerBuilder = compilerBuilderFactory.compilerBuilder(
         outputDir = cliConfig.repl.outputDirectory.map(_.toNIO)
           .orElse {
             if (cliConfig.repl.tmpOutputDirectory.value)

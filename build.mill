@@ -202,6 +202,17 @@ trait AmmInternalModule extends CrossSbtModule {
   // We need it to be a Boolean, not T[Boolean]
   def isCrossFullScalaVersion: Boolean = false
   def crossFullScalaVersion: T[Boolean] = Task { isCrossFullScalaVersion }
+
+  /**
+   * Whether this cross instance is the one we publish artifacts from.
+   *
+   * Modules that aren't cross-published for full Scala versions still get built for more Scala
+   * versions than they are published for (so that they can be tested and assembled against each
+   * supported compiler), and all those instances share the same artifact name. Only publish the
+   * ones built with [[binCrossScalaVersions]].
+   */
+  def isPublishedCrossInstance: Boolean =
+    isCrossFullScalaVersion || binCrossScalaVersions.contains(crossScalaVersion)
   def releaseVersion: T[String] = Task {
     if (Version(scalaVersion()) >= Version("3.8.0")) "17"
     else "11"
@@ -473,10 +484,9 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
       (if (isScala3(crossScalaVersion)) Seq.empty[Dep] else Seq(Deps.scalaReflect(scalaVersion())))
   }
 
-  object runtime extends Cross[RuntimeModule](fullCrossScalaVersions)
+  object runtime extends Cross[RuntimeModule](binCrossScalaVersions)
   trait RuntimeModule extends AmmModule {
     def moduleDeps: Seq[PublishModule] = Seq(amm.util(), interp.api(), amm.repl.api())
-    def isCrossFullScalaVersion = true
     def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
       Deps.classPathUtil,
       Deps.upickle,
@@ -487,9 +497,8 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
   }
 
   object compiler extends Cross[CompilerModule](fullCrossScalaVersions) {
-    object interface extends Cross[CompilerInterfaceModule](fullCrossScalaVersions)
+    object interface extends Cross[CompilerInterfaceModule](binCrossScalaVersions)
     trait CompilerInterfaceModule extends AmmModule {
-      def isCrossFullScalaVersion = true
       def moduleDeps: Seq[PublishModule] = Seq(amm.util())
       def exposedClassPath: T[Seq[PathRef]] = Task {
         runClasspath() ++
@@ -533,12 +542,11 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
     object test extends AmmTests
   }
 
-  object interp extends Cross[InterpModule](fullCrossScalaVersions) {
-    object api extends Cross[InterpApiModule](fullCrossScalaVersions)
+  object interp extends Cross[InterpModule](binCrossScalaVersions) {
+    object api extends Cross[InterpApiModule](binCrossScalaVersions)
     trait InterpApiModule extends AmmModule
         with AmmDependenciesResourceFileModule {
       def moduleDeps: Seq[PublishModule] = Seq(amm.compiler.interface(), amm.util())
-      def isCrossFullScalaVersion = true
       def dependencyResourceFileName = "amm-interp-api-dependencies.txt"
       def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
         Deps.coursierInterface
@@ -564,7 +572,6 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
   trait InterpModule extends AmmModule {
     def moduleDeps: Seq[PublishModule] =
       Seq(amm.util(), amm.runtime(), amm.compiler.interface())
-    def isCrossFullScalaVersion = true
     def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
       Deps.fastparse
     ) ++ {
@@ -587,10 +594,9 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
 
   object repl extends Cross[ReplModule](fullCrossScalaVersions) {
 
-    object api extends Cross[ReplApiModule](fullCrossScalaVersions)
+    object api extends Cross[ReplApiModule](binCrossScalaVersions)
     trait ReplApiModule extends AmmModule
         with AmmDependenciesResourceFileModule {
-      def isCrossFullScalaVersion = true
       def dependencyResourceFileName = "amm-dependencies.txt"
       def moduleDeps: Seq[PublishModule] = Seq(amm.util(), interp.api())
       def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
@@ -617,7 +623,6 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
 
   }
   trait ReplModule extends AmmModule {
-    def isCrossFullScalaVersion = true
     def moduleDeps: Seq[PublishModule] = Seq(
       amm.util(),
       amm.runtime(),
@@ -675,7 +680,6 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
 }
 
 trait MainModule extends AmmModule {
-  def isCrossFullScalaVersion = true
   def mainClass: T[Option[String]] = Some("ammonite.AmmoniteMain")
   def artifactName = "ammonite"
   def moduleDeps: Seq[PublishModule] = Seq(
@@ -685,9 +689,18 @@ trait MainModule extends AmmModule {
     amm.interp.api(),
     amm.repl.api(),
     amm.interp(),
-    amm.repl(),
-    amm.compiler()
+    amm.repl()
   )
+
+  // The launcher and the assembly need a compiler to run, but amm.compiler is published for
+  // each full Scala version, while we are published for binary Scala versions only - so it
+  // can't be a published dependency of ours. Users add the ammonite-compiler variant matching
+  // their own Scala version, and we pick it up via ammonite.compiler.iface.CompilerBuilderFactory.
+  def runModuleDeps: Seq[JavaModule] = Seq(amm.compiler())
+  def publishXmlDeps: Task[Seq[Dependency]] = Task.Anon {
+    val compilerArtifact = amm.compiler().artifactMetadata()
+    super.publishXmlDeps().filter(_.artifact != compilerArtifact)
+  }
 
   def runClasspath: T[Seq[PathRef]] =
     super.runClasspath() ++
@@ -823,7 +836,7 @@ def generateApiWhitelist(replApiCp: Seq[PathRef])(implicit ctx: mill.api.TaskCtx
 
 object integration extends Cross[IntegrationModule](fullCrossScalaVersions)
 trait IntegrationModule extends AmmInternalModule {
-  def moduleDeps: Seq[JavaModule] = Seq(amm())
+  def moduleDeps: Seq[JavaModule] = Seq(amm(), amm.compiler())
   def mvnDeps: T[Seq[Dep]] = Task {
     super.mvnDeps() ++ (
       if (scalaVersion().startsWith("2.13."))
@@ -961,7 +974,9 @@ def publishBundleNameFromTag(tag: String): String =
   "ammonite-" + tag.stripPrefix("v").replace('_', '-')
 
 def publishModulesForScalaVersions(versions: Option[Seq[String]]): Seq[AmmModule] = {
-  val all = moduleInternal.modules.collect { case m: AmmModule => m }
+  val all = moduleInternal.modules.collect {
+    case m: AmmModule if m.isPublishedCrossInstance => m
+  }
   val modules = versions match {
     case None => all
     case Some(vs) =>
