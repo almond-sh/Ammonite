@@ -100,3 +100,55 @@ This is the ideal layering that we want to achieve. It's likely that the
 current implementation does not entirely line up with this, and there is code
 living in places it shouldn't, but over time we should try to move it to this
 layering.
+Cross-publishing
+================
+
+Ammonite supports many Scala versions, and `amm/compiler` is compiled against
+compiler internals (`scala-compiler` for Scala 2, `scala3-compiler` for Scala 3)
+which change from one patch release to the next - see the many
+`amm/compiler/src/main/scala-<version-range>/` source directories. It is
+therefore *fully* cross-published, once per supported Scala version:
+
+```
+ammonite-compiler_2.12.8, …, ammonite-compiler_2.12.21,
+ammonite-compiler_2.13.3, …, ammonite-compiler_2.13.18,
+ammonite-compiler_3.3.8, ammonite-compiler_3.8.4
+```
+
+Every other module only uses the abstractions in
+`ammonite-compiler-interface` (`Compiler`, `CompilerBuilder`, `Parser`,
+`Preprocessor`, `CodeWrapper`), never compiler internals, so they are published
+per *binary* Scala version instead - `ammonite_3`, `ammonite-repl_2.13`,
+`ammonite-util_2.12`, … This keeps the number of modules we publish to Maven
+Central down: one module per Scala version rather than ten.
+
+Two consequences:
+
+- **Users depend on two artifacts**, the binary-versioned entry point and the
+  compiler matching the exact Scala version they run with:
+
+  ```
+  sh.almond.ammonite::ammonite:<version>
+  sh.almond.ammonite:ammonite-compiler_<full-scala-version>:<version>
+  ```
+
+  `ammonite` deliberately does *not* depend on `ammonite-compiler` - it would
+  have to pin one Scala version for all users of a binary version. It finds the
+  compiler at run time instead, via
+  `ammonite.compiler.iface.CompilerBuilderFactory`, a `java.util.ServiceLoader`
+  service that `ammonite-compiler` registers in
+  `META-INF/services/`. Missing it is reported as
+  `CompilerBuilderFactory.NoCompilerException`.
+
+- **Binary cross-published modules are built with the oldest Scala version we
+  support for their binary version** (`binCrossScalaVersions` in `build.mill`).
+  Scala 2 patch releases are only forward binary compatible, so
+  `ammonite-repl_2.13` has to be built with 2.13.3 rather than 2.13.18 to be
+  usable across the whole 2.13 range we support. For Scala 3 the LTS plays that
+  role, its TASTy files being readable by later Scala 3 versions.
+
+Note that `amm`, `amm/repl` and `amm/compiler` are still *built* for every
+supported Scala version, even though the first two are only published per binary
+version: their test suites and the `amm` assemblies need to run against each
+compiler. `isPublishedCrossInstance` in `build.mill` picks the instances we
+actually publish.

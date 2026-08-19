@@ -5,7 +5,7 @@ import java.net.URLClassLoader
 import java.nio.file.NoSuchFileException
 
 import ammonite.compiler.{CodeClassWrapper, DefaultCodeWrapper}
-import ammonite.compiler.iface.{CodeWrapper, CompilerBuilder, Parser}
+import ammonite.compiler.iface.{CodeWrapper, CompilerBuilder, CompilerBuilderFactory, Parser}
 import ammonite.interp.{Watchable, Interpreter, PredefInitialization}
 import ammonite.runtime.{Frame, Storage}
 import ammonite.main._
@@ -80,9 +80,9 @@ case class Main(
     alreadyLoadedDependencies: Seq[Dependency] =
       Defaults.alreadyLoadedDependencies(),
     importHooks: Map[Seq[String], ImportHook] = ImportHook.defaults,
-    compilerBuilder: CompilerBuilder = ammonite.compiler.CompilerBuilder(),
+    compilerBuilder: CompilerBuilder = CompilerBuilderFactory.load().compilerBuilder(),
     // by-name, so that fastparse isn't loaded when we don't need it
-    parser: () => Parser = () => ammonite.compiler.Parsers,
+    parser: () => Parser = () => CompilerBuilderFactory.load().parser,
     classPathWhitelist: Set[Seq[String]] = Set.empty,
     warnings: Boolean = false
 ) {
