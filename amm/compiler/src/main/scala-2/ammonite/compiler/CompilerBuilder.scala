@@ -4,6 +4,7 @@ import java.net.URL
 import java.nio.file.Path
 
 import ammonite.compiler.iface.{Compiler => ICompiler, CompilerBuilder => ICompilerBuilder}
+import ammonite.compiler.internal.CompilerInternals
 import ammonite.util.Frame
 
 import scala.collection.mutable
@@ -48,7 +49,7 @@ case class CompilerBuilder(
         val msg = ICompilerBuilder.Message(severity, start, end, message)
         f(msg)
       }
-      MakeReporter.makeReporter(
+      CompilerInternals.reporterMaker.makeReporter(
         (pos, msg) => report(pos, msg, "ERROR"),
         (pos, msg) => report(pos, msg, "WARNING"),
         (pos, msg) => report(pos, msg, "INFO"),

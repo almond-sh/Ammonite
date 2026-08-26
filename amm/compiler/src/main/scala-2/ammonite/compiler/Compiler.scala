@@ -4,6 +4,7 @@ import java.io.OutputStream
 import java.nio.file.{Files, Path, Paths}
 
 import ammonite.compiler.iface.{Compiler => ICompiler, Preprocessor}
+import ammonite.compiler.internal.CompilerInternals
 import ammonite.util.{Classpath, ImportData, Imports, Printer}
 import ammonite.util.Util.newLine
 
@@ -18,8 +19,9 @@ import scala.tools.nsc.classpath.{
   FileUtils,
   VirtualDirectoryClassPath
 }
-import scala.tools.nsc.{CustomZipAndJarFileLookupFactory, Global, Settings}
+import scala.tools.nsc.{Global, Settings}
 import scala.tools.nsc.interactive.Response
+import scala.tools.nsc.reporters.Reporter
 import scala.tools.nsc.plugins.Plugin
 
 /**
@@ -108,7 +110,7 @@ object Compiler {
       evalClassloader: => ClassLoader,
       pluginClassloader: => ClassLoader,
       shutdownPressy: () => Unit,
-      reporterOpt: Option[MakeReporter.Reporter],
+      reporterOpt: Option[Reporter],
       settings: Settings,
       classPathWhitelist: Set[Seq[String]],
       initialClassPath: Seq[java.net.URL],
@@ -206,7 +208,7 @@ object Compiler {
 
       val reporter = reporterOpt.getOrElse {
         import scala.reflect.internal.util.Position
-        MakeReporter.makeReporter(
+        CompilerInternals.reporterMaker.makeReporter(
           (pos, msg) => errorLogger(Position.formatMessage(fixPos(pos), msg, false)),
           (pos, msg) => warningLogger(Position.formatMessage(fixPos(pos), msg, false)),
           (pos, msg) => infoLogger(Position.formatMessage(fixPos(pos), msg, false)),
@@ -214,7 +216,7 @@ object Compiler {
         )
       }
 
-      val scalac = CompilerCompatibility.initGlobal(
+      val scalac = CompilerInternals.globalMaker.global(
         settings,
         reporter,
         jcp,
@@ -284,7 +286,7 @@ object Compiler {
         files ++ subs.map(_.asInstanceOf[VirtualDirectory]).flatMap(enumerateVdFiles)
       }
 
-      compiler.reporter.reset()
+      CompilerInternals.globalMaker.resetReporter(compiler)
       this.errorLogger = printer.error
       this.warningLogger = printer.warning
       this.infoLogger = printer.info
@@ -348,13 +350,11 @@ object Compiler {
           val path = Paths.get(x.toURI)
           if (Files.exists(path)) {
             val arc = new FileZipArchive(path.toFile)
-            Seq(CompilerCompatibility.createZipJarFactory(arc, settings))
+            Seq(CompilerInternals.classPathMaker.zipClassPath(arc, settings))
           } else
             Nil
-        } else {
-          val arc = new internal.CustomURLZipArchive(x)
-          Seq(CustomZipAndJarFileLookupFactory.create(arc, settings))
-        }
+        } else
+          Seq(CompilerInternals.classPathMaker.urlZipClassPath(x, settings))
       }
       .toVector
   }
@@ -418,7 +418,7 @@ object Compiler {
 
     }
 
-    val staticCP = new scala.tools.nsc.WhiteListClasspath(
+    val staticCP = CompilerInternals.classPathMaker.whiteListClassPath(
       initialJarCp ++ initialDirCp,
       classPathWhitelist
     )
