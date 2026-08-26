@@ -8,9 +8,15 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# never publish two bundles at once for the same ref
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish-maven:
 
+    if: github.repository == 'almond-sh/Ammonite'
     runs-on: ubuntu-latest
     env:
       MILL_SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
