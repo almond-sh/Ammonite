@@ -2,7 +2,7 @@ package ammonite.compiler
 
 import java.io.{OutputStream, PrintWriter}
 
-import ammonite.compiler.MakeReporter.makeReporter
+import ammonite.compiler.internal.CompilerInternals
 import ammonite.util.Name
 
 import scala.reflect.internal.util.{BatchSourceFile, OffsetPosition, Position}
@@ -12,9 +12,6 @@ import scala.tools.nsc.Settings
 import scala.tools.nsc.interactive.Response
 import scala.util.{Failure, Success, Try}
 import ammonite.util.Util.newLine
-import scala.tools.nsc.interactive.{Global => InteractiveGlobal}
-import scala.tools.nsc.classpath.AggregateClassPath
-import scala.tools.nsc.reporters.Reporter
 
 /**
  * Nice wrapper for the presentation compiler.
@@ -283,25 +280,6 @@ object Pressy {
       if (cachedPressy == null) cachedPressy = initPressy
       cachedPressy
     }
-    def initInteractiveGlobal(
-        settings: Settings,
-        reporter: Reporter,
-        jcp: AggregateClassPath,
-        evalClassloader: ClassLoader
-    ): InteractiveGlobal = {
-      new nsc.interactive.Global(settings, reporter) { g =>
-        // Actually jcp, avoiding a path-dependent type issue in 2.10 here
-        override def classPath = jcp
-
-        override lazy val platform: ThisPlatform = new GlobalPlatform {
-          override val global = g
-          override val settings = g.settings
-          override val classPath = jcp
-        }
-
-        override lazy val analyzer = CompilerCompatibility.interactiveAnalyzer(g, evalClassloader)
-      }
-    }
     def initPressy = {
       val (dirDeps, jarDeps) = classpath.partition { u =>
         u.getProtocol == "file" &&
@@ -315,8 +293,9 @@ object Pressy {
         classPathWhitelist,
         initialClassPath
       )
-      val reporter = makeReporter((_, _) => (), (_, _) => (), (_, _) => (), settings)
-      initInteractiveGlobal(settings, reporter, jcp, evalClassloader)
+      val reporter = CompilerInternals.reporterMaker
+        .makeReporter((_, _) => (), (_, _) => (), (_, _) => (), settings)
+      CompilerInternals.globalMaker.interactiveGlobal(settings, reporter, jcp, evalClassloader)
     }
 
     def complete(snippetIndex: Int, previousImports: String, snippet: String) = {

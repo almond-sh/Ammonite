@@ -1,5 +1,6 @@
 package ammonite.compiler
 
+import ammonite.compiler.internal.CompilerInternals
 import ammonite.util.{ImportData, Name, Util}
 
 import scala.reflect.NameTransformer
@@ -199,7 +200,9 @@ object AmmonitePlugin {
           // prefix package imports with `_root_` to try and stop random
           // variables from interfering with them. If someone defines a value
           // called `_root_`, this will still break, but that's their problem
-          val rootPrefix = if (symbolList.head.isPackage) Seq(Name("_root_")) else Nil
+          val rootPrefix =
+            if (CompilerInternals.symbolOps.isPackage(g)(symbolList.head)) Seq(Name("_root_"))
+            else Nil
           val tailPath = nameList.tail.map(_.decoded).map(Name(_))
 
           val prefix = rootPrefix ++ headFullPath ++ tailPath
@@ -223,7 +226,7 @@ object AmmonitePlugin {
           } yield Option(rename).map(x => name.decoded -> (isType, x.decoded))
 
           val renameMap = renamings.flatten.map(_.swap).toMap
-          val info = CompilerCompatibility.importInfo(g)(t)
+          val info = CompilerInternals.globalMaker.importInfo(g)(t)
 
           val symNames = for {
             sym <- info.allImportedSymbols

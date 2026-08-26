@@ -85,6 +85,210 @@ def isScala2_12_10OrLater(sv: String): Boolean = {
 }
 val fullCrossScalaVersions = scala2Versions ++ scala3Versions
 
+/**
+ * A source directory of `amm.compiler.internal`, and the full Scala versions it is written for.
+ *
+ * The classes in it are named after the directory - `scala-2.13.12+` holds `ReporterMaker2_13_12`,
+ * `scala-2.12.0-2.12.12` holds `ReporterMaker2_12_0__2_12_12` - so that the implementations for
+ * all the patch versions of a binary Scala version can sit side by side in a single
+ * `ammonite-compiler` JAR, which picks between them at run time from the compiler it finds on
+ * its class path.
+ *
+ * @param name the directory name, under `amm/compiler/internal/src/main`
+ * @param interfaces the `amm.compiler.interfaces` traits it implements, one class per trait
+ * @param covers whether it is written for a given full Scala version
+ */
+case class CompilerInternalDir(name: String, interfaces: Seq[String], covers: String => Boolean) {
+
+  /** The suffix the names of the classes in this directory end with. */
+  def classNameSuffix: String =
+    name.stripPrefix("scala-").stripSuffix("+").replace("-", "__").replace(".", "_")
+
+  /**
+   * The full Scala versions this directory is compiled with - the oldest one we support for
+   * each binary Scala version it covers, so that its classes run on all the other ones.
+   */
+  def scalaVersions: Seq[String] =
+    binCrossScalaVersions.flatMap(fullScalaVersionsFor(_).find(covers))
+}
+
+/**
+ * The source directories of `amm.compiler.internal`.
+ *
+ * Each one holds the implementations, for one interval of Scala versions, of some of the
+ * interfaces `amm.compiler.interfaces` defines - the parts of Ammonite that have to follow
+ * the Scala compiler's internals from one patch release to the next.
+ */
+val compilerInternalDirs: Seq[CompilerInternalDir] = {
+  def patchOf(sv: String, prefix: String) = sv.stripPrefix(prefix).toInt
+  def is2_12(sv: String) = sv.startsWith("2.12.")
+  def is2_13(sv: String) = sv.startsWith("2.13.")
+  Seq(
+    // ReporterMaker: scalac's reporters were rewritten in 2.12.13 / 2.13.1 (AbstractReporter
+    // gave way to FilteringReporter), and doReport took an extra List[CodeAction] in 2.13.12
+    CompilerInternalDir(
+      "scala-2.12.0-2.12.12",
+      Seq("ReporterMaker"),
+      sv => is2_12(sv) && patchOf(sv, "2.12.") <= 12
+    ),
+    CompilerInternalDir(
+      "scala-2.12.13-2.13.11",
+      Seq("ReporterMaker"),
+      sv =>
+        (is2_12(sv) && patchOf(sv, "2.12.") >= 13) || (is2_13(sv) && patchOf(sv, "2.13.") <= 11)
+    ),
+    CompilerInternalDir(
+      "scala-2.13.12+",
+      Seq("ReporterMaker"),
+      sv => is2_13(sv) && patchOf(sv, "2.13.") >= 12
+    ),
+    // GlobalMaker: 2.12 has to subclass the analyzer to get Ammonite's macro class loader in,
+    // and a subclass of that trait only links against a scalac that declares no typechecker
+    // field it does not already set - 2.12.9 added some, and 2.12.13 dropped the need for an
+    // interactive analyzer of our own. 2.13 needs no analyzer of its own at all.
+    CompilerInternalDir(
+      "scala-2.12.0-2.12.8",
+      Seq("GlobalMaker", "ClassPathMaker"),
+      sv => is2_12(sv) && patchOf(sv, "2.12.") <= 8
+    ),
+    CompilerInternalDir(
+      "scala-2.12.9-2.12.12",
+      Seq("GlobalMaker"),
+      sv => is2_12(sv) && patchOf(sv, "2.12.") >= 9 && patchOf(sv, "2.12.") <= 12
+    ),
+    CompilerInternalDir(
+      "scala-2.12.13+",
+      Seq("GlobalMaker"),
+      sv => is2_12(sv) && patchOf(sv, "2.12.") >= 13
+    ),
+    CompilerInternalDir("scala-2.13", Seq("GlobalMaker"), is2_13),
+    // SymbolOps: Symbol.isPackage was declared by HasFlags until 2.13.17 moved it
+    CompilerInternalDir("scala-2.12", Seq("SymbolOps"), is2_12),
+    CompilerInternalDir(
+      "scala-2.13.0-2.13.16",
+      Seq("SymbolOps"),
+      sv => is2_13(sv) && patchOf(sv, "2.13.") <= 16
+    ),
+    CompilerInternalDir(
+      "scala-2.13.17+",
+      Seq("SymbolOps"),
+      sv => is2_13(sv) && patchOf(sv, "2.13.") >= 17
+    ),
+    // ClassPathMaker: ZipAndJarClassPathFactory.create takes a CloseableRegistry since 2.12.9,
+    // and scalac's ClassPath methods take a PackageName rather than a String since 2.12.10
+    // (the 2.12.0-2.12.8 variant lives in the directory the GlobalMaker one is in)
+    CompilerInternalDir("scala-2.12.9", Seq("ClassPathMaker"), _ == "2.12.9"),
+    CompilerInternalDir(
+      "scala-2.12.10-2.13",
+      Seq("ClassPathMaker"),
+      sv => (is2_12(sv) && patchOf(sv, "2.12.") >= 10) || is2_13(sv)
+    ),
+    // CompilationUnitMaker: CompilationUnit takes an extra parameter since 3.4.2
+    CompilerInternalDir(
+      "scala-3.0.0-3.4.1",
+      Seq("CompilationUnitMaker"),
+      sv => isScala3(sv) && Version(sv) < Version("3.4.2")
+    ),
+    CompilerInternalDir(
+      "scala-3.4.2+",
+      Seq("CompilationUnitMaker"),
+      sv => isScala3(sv) && Version(sv) >= Version("3.4.2")
+    ),
+    // GivenNames: desugar.inventGivenOrExtensionName was renamed to inventGivenName in 3.5.0
+    CompilerInternalDir(
+      "scala-3.0.0-3.4",
+      Seq("GivenNames"),
+      sv => isScala3(sv) && Version(sv) < Version("3.5.0")
+    ),
+    CompilerInternalDir(
+      "scala-3.5.0+",
+      Seq("GivenNames"),
+      sv => isScala3(sv) && Version(sv) >= Version("3.5.0")
+    ),
+    // MessageRenderer and TermRefNames: 3.8.2 dropped MessageRendering.inlinePosStack, and
+    // changed what NamedType.designator returns
+    CompilerInternalDir(
+      "scala-3.0.0-3.8.1",
+      Seq("MessageRenderer", "TermRefNames"),
+      sv => isScala3(sv) && Version(sv) < Version("3.8.2")
+    ),
+    CompilerInternalDir(
+      "scala-3.8.2+",
+      Seq("MessageRenderer", "TermRefNames"),
+      sv => isScala3(sv) && Version(sv) >= Version("3.8.2")
+    ),
+    // CompletionMaker: dotty's Completion.Completer took over the whole tree path in 3.7.0
+    CompilerInternalDir(
+      "scala-3.0.0-3.6",
+      Seq("CompletionMaker"),
+      sv => isScala3(sv) && Version(sv) < Version("3.7.0")
+    ),
+    CompilerInternalDir(
+      "scala-3.7+",
+      Seq("CompletionMaker"),
+      sv => isScala3(sv) && Version(sv) >= Version("3.7.0")
+    )
+  )
+}
+
+/** The `amm.compiler.internal` source directories `scalaVersion` compiles. */
+def compilerInternalDirsFor(scalaVersion: String): Seq[String] =
+  compilerInternalDirs.filter(_.scalaVersions.contains(scalaVersion)).map(_.name)
+
+/**
+ * The `ammonite.compiler.internal.CompilerInternals` source of the `amm.compiler` instance
+ * for `binaryScalaVersion`, which hands out the [[compilerInternalDirs]] implementations
+ * written for the compiler it finds at run time.
+ */
+def compilerInternalsSource(binaryScalaVersion: String): String = {
+  val supported = fullScalaVersionsFor(binaryScalaVersion)
+  val accessors = compilerInternalDirs
+    .flatMap(dir => dir.interfaces.map(_ -> dir))
+    .groupBy(_._1)
+    .map {
+      case (interface, dirs) =>
+        val variants = dirs
+          .flatMap { case (_, dir) => supported.find(dir.covers).map(_ -> dir.classNameSuffix) }
+          .sortWith { case ((a, _), (b, _)) => Version(a) < Version(b) }
+        interface -> variants
+    }
+    .filter { case (_, variants) => variants.nonEmpty }
+    .toSeq
+    .sortBy { case (interface, _) => interface }
+    .map {
+      case (interface, variants) =>
+        val name = interface.head.toLower +: interface.tail
+        val entries = variants
+          .map { case (since, suffix) => s"""      "$since" -> "$suffix"""" }
+          .mkString(",\n")
+        s"""  lazy val $name: $interface =
+           |    InternalsLoader.load(
+           |      classOf[$interface],
+           |      compilerVersion,
+           |$entries
+           |    )""".stripMargin
+    }
+  val compilerClass =
+    if (isScala3(binaryScalaVersion)) "classOf[dotty.tools.dotc.Driver]"
+    else "classOf[scala.tools.nsc.Global]"
+  s"""package ammonite.compiler.internal
+     |
+     |/**
+     | * The `ammonite.compiler.internal` implementations written for the Scala compiler that
+     | * `ammonite-compiler` finds on its class path.
+     | *
+     | * Generated by mill, from `compilerInternalDirs` in build.mill.
+     | */
+     |object CompilerInternals {
+     |
+     |  private lazy val compilerVersion =
+     |    InternalsLoader.compilerVersion($compilerClass)
+     |
+     |${accessors.mkString("\n\n")}
+     |}
+     |""".stripMargin
+}
+
 def ciScalaVersions = Task {
   def entries(versions: Seq[String], includeMiddle: Boolean) = {
     val selected =
@@ -226,10 +430,28 @@ object Deps {
   val utest = mvn"com.lihaoyi::utest:0.9.1"
 }
 
+/** [[params]], with the Scala artifacts on the class path forced to `scalaVersion`. */
+def forcingScalaVersion(
+    params: coursier.params.ResolutionParams,
+    scalaVersion: String
+): coursier.params.ResolutionParams = {
+  val org = coursier.Organization(mill.javalib.api.JvmWorkerUtil.scalaOrganization(scalaVersion))
+  // Lib.scalaArtifacts gives the artifact names without the Scala 3 suffix the modules carry
+  val suffix = if (isScala3(scalaVersion)) "_3" else ""
+  params.addForceVersion0(
+    mill.javalib.Lib.scalaArtifacts(scalaVersion).toSeq.sorted.map { name =>
+      coursier.Module(org, coursier.ModuleName(name + suffix), Map.empty) ->
+        coursier.version.VersionConstraint(scalaVersion)
+    }*
+  )
+}
+
+/** The Scala compiler a module written against compiler internals compiles against. */
+def scalaCompilerMvnDeps(scalaVersion: String, isScala2: Boolean): Seq[Dep] =
+  if (isScala2) Seq(Deps.scalaCompiler(scalaVersion))
+  else Seq(mvn"org.scala-lang::scala3-compiler:$scalaVersion")
+
 trait AmmInternalModule extends CrossSbtModule {
-  // We need it to be a Boolean, not T[Boolean]
-  def isCrossFullScalaVersion: Boolean = false
-  def crossFullScalaVersion: T[Boolean] = Task { isCrossFullScalaVersion }
   def releaseVersion: T[String] = Task {
     if (Version(scalaVersion()) >= Version("3.8.0")) "17"
     else "11"
@@ -273,102 +495,14 @@ trait AmmInternalModule extends CrossSbtModule {
   def allBoundMvnDeps: T[Seq[BoundDep]] =
     Task { (allMvnDeps() ++ scalaLibraryMvnDeps()).map(bindDependency()) }
 
-  def customSourceDirs: Seq[os.Path] = {
-    val sv = crossScalaVersion
-    def isScala2 = sv.startsWith("2.")
-    def isScala3 = sv.startsWith("3.")
-    val extraDir =
-      if (sv.startsWith("2.12.")) {
-        val patch = sv.stripPrefix("2.12.").takeWhile(_.isDigit).toInt
-        val dirName0 = if (patch <= 8) "scala-2.12.0_8" else "scala-2.12.9+"
-        val dirNames1 = if (patch <= 12) Seq("scala-2.12.0_12") else Nil
-        val dirNames = Seq(dirName0) ++ dirNames1
-        dirNames.map(dirName => moduleDir / "src" / "main" / dirName)
-      } else
-        Nil
-
-    val extraDir2 =
-      if (isScala2)
-        Seq(
-          if (isScala2_12_10OrLater(sv)) moduleDir / "src" / "main" / "scala-2.12.10-2.13.1+"
-          else moduleDir / "src" / "main" / "scala-not-2.12.10-2.13.1+"
-        )
-      else Nil
-    val extraDir3 =
-      if (isScala2) {
-        val dir =
-          if (
-            sv.startsWith("2.13.") && sv.stripPrefix("2.13.").toInt >= 1 && sv.stripPrefix(
-              "2.13."
-            ).toInt <= 11
-          )
-            moduleDir / "src" / "main" / "scala-2.13.1-2.13.11"
-          else if (sv.startsWith("2.13.") && sv.stripPrefix("2.13.").toInt >= 12)
-            moduleDir / "src" / "main" / "scala-2.13.12+"
-          else if (sv.startsWith("2.12.") && sv.stripPrefix("2.12.").toInt >= 13)
-            moduleDir / "src" / "main" / "scala-2.12.13+"
-          else
-            moduleDir / "src" / "main" / "scala-not-2.12.13+-2.13.1+"
-        Seq(dir)
-      } else Nil
-    val extraDir4 =
-      if (sv.startsWith("2.13.") || sv.startsWith("3."))
-        Seq(moduleDir / "src" / "main" / "scala-2.13-or-3")
-      else Nil
-    val extraDir5 =
-      if (Version(sv) >= Version("3.5.0"))
-        Seq(moduleDir / "src" / "main" / "scala-3.5.0+")
-      else if (Version(sv) >= Version("3.4.0") && Version(sv) < Version("3.4.2"))
-        sys.error("Scala 3.4.0 and 3.4.1 are incompatible with Ammonite")
-      else if (Version(sv) >= Version("3.4.2") && Version(sv) < Version("3.5.0"))
-        Seq(moduleDir / "src" / "main" / "scala-3.4.2+")
-      else if (Version(sv) >= Version("3.3.2") && Version(sv) < Version("3.4.0"))
-        Seq(moduleDir / "src" / "main" / "scala-3.3.2+")
-      else if (Version(sv) >= Version("3.0.0") && Version(sv) <= Version("3.3.1"))
-        Seq(moduleDir / "src" / "main" / "scala-3.0.0-3.3.1")
-      else Nil
-    val extraDir6 =
-      if (Version(sv) >= Version("3.0.0") && Version(sv) <= Version("3.3.5"))
-        Seq(moduleDir / "src" / "main" / "scala-3.0.0-3.3.5")
-      else if (Version(sv) >= Version("3.3.6") && Version(sv) < Version("3.4.0"))
-        Seq(moduleDir / "src" / "main" / "scala-3.3.6+")
-      else if (Version(sv) >= Version("3.4.0") && Version(sv) < Version("3.4.2"))
-        Seq(moduleDir / "src" / "main" / "scala-3.4")
-      else if (Version(sv) >= Version("3.5.0") && Version(sv) < Version("3.6.0"))
-        Seq(moduleDir / "src" / "main" / "scala-3.5")
-      else if (Version(sv) >= Version("3.6.0") && Version(sv) <= Version("3.6.2"))
-        Seq(moduleDir / "src" / "main" / "scala-3.6.0-3.6.2")
-      else if (Version(sv) >= Version("3.6.3") && Version(sv) < Version("3.7.0"))
-        Seq(moduleDir / "src" / "main" / "scala-3.6.3+")
-      else if (Version(sv) >= Version("3.7.0"))
-        Seq(moduleDir / "src" / "main" / "scala-3.7+")
-      else
-        Nil
-    val extraDir7 =
-      if (Version(sv) >= Version("3.3.2") && Version(sv) <= Version("3.3.6"))
-        Seq(moduleDir / "src" / "main" / "scala-3.3.2-3.3.6")
-      else if (Version(sv) >= Version("3.3.7") && Version(sv) < Version("3.4.0"))
-        Seq(moduleDir / "src" / "main" / "scala-3.3.7+")
-      else
-        Nil
-    val extraDir8 =
-      if (Version(sv) >= Version("3.5.0") && Version(sv) < Version("3.7.0"))
-        Seq(moduleDir / "src" / "main" / "scala-3.5-3.6")
-      else
-        Nil
-    val extraDir9 =
-      if (Version(sv) == Version("3.3.7"))
-        Seq(moduleDir / "src" / "main" / "scala-3.3.7")
-      else if (Version(sv) >= Version("3.3.8") && Version(sv) < Version("3.4.0"))
-        Seq(moduleDir / "src" / "main" / "scala-3.3.8+")
-      else
-        Nil
-
-    val extraDirs: Seq[os.Path] =
-      extraDir ++ extraDir2 ++ extraDir3 ++ extraDir4 ++ extraDir5 ++ extraDir6 ++ extraDir7 ++ extraDir8 ++ extraDir9
-
-    extraDirs
-  }
+  /**
+   * Source directories a module gets on top of the ones Mill knows about
+   * (`src/main/scala`, `src/main/scala-2.13`, ...).
+   */
+  def customSourceDirs: Seq[os.Path] =
+    if (crossScalaVersion.startsWith("2.13.") || isScala3(crossScalaVersion))
+      Seq(moduleDir / "src" / "main" / "scala-2.13-or-3")
+    else Nil
 
   def customSources: T[Seq[PathRef]] = Task.Sources(customSourceDirs*)
 
@@ -501,29 +635,111 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
       (if (isScala3(crossScalaVersion)) Seq.empty[Dep] else Seq(Deps.scalaReflect(scalaVersion())))
   }
 
-  object compiler extends Cross[CompilerModule](fullCrossScalaVersions)
+  /**
+   * The Scala compiler bits of Ammonite: preprocessing, compiling, completing.
+   *
+   * Published once per binary Scala version, like every other module. What has to follow the
+   * Scala compiler's internals from one patch release to the next lives in
+   * [[amm.compiler.internal]], whose classes this module's JAR bundles as is.
+   */
+  object compiler extends Cross[CompilerModule](binCrossScalaVersions) {
+
+    /**
+     * The interfaces between `amm.compiler` and the Scala compiler internals that move
+     * between patch releases, implemented by [[amm.compiler.internal]].
+     *
+     * Built once per binary Scala version, like `amm.compiler`, which bundles its classes and
+     * compiles against them. Not published.
+     */
+    object interfaces extends Cross[CompilerInterfacesModule](binCrossScalaVersions)
+    trait CompilerInterfacesModule extends AmmInternalModule {
+      def moduleDeps: Seq[JavaModule] = Seq(amm.util())
+      def mvnDeps: T[Seq[Dep]] = Task {
+        super.mvnDeps() ++ scalaCompilerMvnDeps(scalaVersion(), isScala2())
+      }
+    }
+
+    /**
+     * The implementations of the [[amm.compiler.interfaces]] interfaces.
+     *
+     * Cross-built for every full Scala version we support, but each of its source directories
+     * is only compiled by the oldest version it covers, once per binary Scala version - see
+     * [[compilerInternalDirs]]. Every class it produces carries the version interval it was
+     * written for in its name, so that `amm.compiler` can bundle them all in a single JAR.
+     * Not published.
+     */
+    object internal extends Cross[CompilerInternalModule](fullCrossScalaVersions)
+    trait CompilerInternalModule extends AmmInternalModule {
+      def moduleDeps: Seq[JavaModule] = Seq(amm.util(), amm.compiler.interfaces())
+      def mvnDeps: T[Seq[Dep]] = Task {
+        super.mvnDeps() ++ scalaCompilerMvnDeps(scalaVersion(), isScala2())
+      }
+      /** The directories of [[compilerInternalDirs]] this instance is the oldest version of. */
+      def internalSourceDirs: Seq[os.Path] =
+        compilerInternalDirsFor(crossScalaVersion).map(moduleDir / "src" / "main" / _)
+      def sources: T[Seq[PathRef]] = Task.Sources(internalSourceDirs*)
+    }
+  }
   trait CompilerModule extends AmmModule {
     def supports3 = true
     def moduleDeps: Seq[PublishModule] =
       Seq(amm.util(), amm.repl.api())
-    def isCrossFullScalaVersion = true
     def mvnDeps: T[Seq[Dep]] = Task {
       val scalaSpecificDeps =
         if (isScala2())
           Seq(
-            Deps.scalaCompiler(scalaVersion()),
             Deps.scalaparse,
             Deps.scalaXml(scalaVersion())
           )
         else
           Seq[Dep](
-            mvn"org.scala-lang::scala3-compiler:${scalaVersion()}",
             mvn"org.ow2.asm:asm:9.9.1"
           )
-      super.mvnDeps() ++ scalaSpecificDeps ++ Seq(
-        Deps.javassist,
-        Deps.javaparserCore
+      super.mvnDeps() ++ scalaCompilerMvnDeps(scalaVersion(), isScala2()) ++ scalaSpecificDeps ++
+        Seq(
+          Deps.javassist,
+          Deps.javaparserCore
+        )
+    }
+
+    /** Where [[ammonite.compiler.internal.CompilerInternals]] comes from. */
+    def internalsSource: T[PathRef] = Task {
+      val dir = Task.dest / "src"
+      os.write(
+        dir / "CompilerInternals.scala",
+        compilerInternalsSource(crossScalaVersion),
+        createFolders = true
       )
+      PathRef(dir)
+    }
+
+    def generatedSources: T[Seq[PathRef]] = Task {
+      super.generatedSources() ++ Seq(internalsSource())
+    }
+
+    /** The [[amm.compiler.internal]] instances whose classes this module's JAR bundles. */
+    def internalModules: Seq[compiler.CompilerInternalModule] =
+      amm.compiler.internal.crossModules
+        .filter(m => binCrossScalaVersionFor(m.crossScalaVersion) == crossScalaVersion)
+        .filter(m => compilerInternalDirsFor(m.crossScalaVersion).nonEmpty)
+
+    // The interfaces are unpublished: we compile against them, and ship their class files
+    // ourselves rather than depending on them
+    def compileModuleDeps: Seq[JavaModule] = Seq(amm.compiler.interfaces())
+
+    /**
+     * The class files of the [[internalModules]], which we bundle as is: they are compiled
+     * with the Scala versions they interface with rather than ours, and are only ever loaded
+     * by name, from [[ammonite.compiler.internals.CompilerInternals]].
+     */
+    def internalClasses: T[Seq[PathRef]] = Task {
+      Task.traverse(internalModules)(m => Task.Anon { m.compile().classes })()
+    }
+
+    def localClasspath: T[Seq[PathRef]] = Task {
+      super.localClasspath() ++
+        Seq(amm.compiler.interfaces().compile().classes) ++
+        internalClasses()
     }
 
     def exposedClassPath: T[Seq[PathRef]] = Task {
@@ -634,35 +850,30 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
       // (the module is built once per binary Scala version, its tests once per full one),
       // so force ours back.
       def resolutionParams: Task[coursier.params.ResolutionParams] = Task.Anon {
-        val sv = scalaVersion()
-        val org = coursier.Organization(mill.javalib.api.JvmWorkerUtil.scalaOrganization(sv))
-        super.resolutionParams().addForceVersion0(
-          mill.javalib.Lib.scalaArtifacts(sv).toSeq.sorted.map { name =>
-            coursier.Module(org, coursier.ModuleName(name), Map.empty) ->
-              coursier.version.VersionConstraint(sv)
-          }*
-        )
+        forcingScalaVersion(super.resolutionParams(), scalaVersion())
       }
 
       // ScalaTests takes these from the module under test too, which was built with another
-      // Scala version - take them from the compiler module for our version instead, it is
+      // Scala version - take them from amm.compiler.internal instead, the one module still
       // built with exactly the Scala version we compile these tests with
-      def scalaCompilerBridge: T[Option[PathRef]] = amm.compiler(crossValue).scalaCompilerBridge()
-      def scalacPluginMvnDeps: T[Seq[Dep]] = amm.compiler(crossValue).scalacPluginMvnDeps()
-      def scalacPluginClasspath: T[Seq[PathRef]] = amm.compiler(crossValue).scalacPluginClasspath()
-      def scalacOptions: T[Seq[String]] = amm.compiler(crossValue).scalacOptions()
-      def jvmVersion: T[String] = amm.compiler(crossValue).jvmVersion()
+      def scalaCompilerBridge: T[Option[PathRef]] =
+        amm.compiler.internal(crossValue).scalaCompilerBridge()
+      def scalacPluginMvnDeps: T[Seq[Dep]] = amm.compiler.internal(crossValue).scalacPluginMvnDeps()
+      def scalacPluginClasspath: T[Seq[PathRef]] =
+        amm.compiler.internal(crossValue).scalacPluginClasspath()
+      def scalacOptions: T[Seq[String]] = amm.compiler.internal(crossValue).scalacOptions()
+      def jvmVersion: T[String] = amm.compiler.internal(crossValue).jvmVersion()
       // ...and the JVM the compiler runs on: the Scala 3 compiler bridge for recent
       // versions needs a newer JVM than the module under test is built with
-      def jvmId = amm.compiler(crossValue).jvmId
-      def javaHome = amm.compiler(crossValue).javaHome
+      def jvmId = amm.compiler.internal(crossValue).jvmId
+      def javaHome = amm.compiler.internal(crossValue).javaHome
 
-      def moduleDeps: Seq[JavaModule] = super.moduleDeps ++ Seq(amm.compiler(crossValue))
+      def moduleDeps: Seq[JavaModule] = super.moduleDeps ++ Seq(amm.compiler())
 
       def thinWhitelist: T[PathRef] = Task {
         generateApiWhitelist(
           amm.repl.api().exposedClassPath() ++
-            amm.compiler(crossValue).exposedClassPath() ++
+            amm.compiler().exposedClassPath() ++
             Seq(compile().classes) ++
             defaultResolver().classpath(
               (this.compileMvnDeps() ++ allMvnDeps()).map(bindDependency())
@@ -692,7 +903,7 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
             artifactTypes = None
           )(using CoursierModule.ResolvableBoundDep)).distinct
       }
-      def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ amm.compiler(crossValue).mvnDeps() ++ Seq(
+      def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ amm.compiler().mvnDeps() ++ Seq(
         Deps.scalazCore,
         Deps.coursierVersions(scalaVersion())
       )
@@ -746,31 +957,26 @@ trait MainModule extends AmmModule {
     // (the module is built once per binary Scala version, its tests once per full one),
     // so force ours back.
     def resolutionParams: Task[coursier.params.ResolutionParams] = Task.Anon {
-      val sv = scalaVersion()
-      val org = coursier.Organization(mill.javalib.api.JvmWorkerUtil.scalaOrganization(sv))
-      super.resolutionParams().addForceVersion0(
-        mill.javalib.Lib.scalaArtifacts(sv).toSeq.sorted.map { name =>
-        coursier.Module(org, coursier.ModuleName(name), Map.empty) ->
-          coursier.version.VersionConstraint(sv)
-        }*
-      )
+      forcingScalaVersion(super.resolutionParams(), scalaVersion())
     }
 
     // ScalaTests takes these from the module under test too, which was built with another
-    // Scala version - take them from the compiler module for our version instead, it is
+    // Scala version - take them from amm.compiler.internal instead, the one module still
     // built with exactly the Scala version we compile these tests with
-    def scalaCompilerBridge: T[Option[PathRef]] = amm.compiler(crossValue).scalaCompilerBridge()
-    def scalacPluginMvnDeps: T[Seq[Dep]] = amm.compiler(crossValue).scalacPluginMvnDeps()
-    def scalacPluginClasspath: T[Seq[PathRef]] = amm.compiler(crossValue).scalacPluginClasspath()
-    def scalacOptions: T[Seq[String]] = amm.compiler(crossValue).scalacOptions()
-    def jvmVersion: T[String] = amm.compiler(crossValue).jvmVersion()
+    def scalaCompilerBridge: T[Option[PathRef]] =
+      amm.compiler.internal(crossValue).scalaCompilerBridge()
+    def scalacPluginMvnDeps: T[Seq[Dep]] = amm.compiler.internal(crossValue).scalacPluginMvnDeps()
+    def scalacPluginClasspath: T[Seq[PathRef]] =
+      amm.compiler.internal(crossValue).scalacPluginClasspath()
+    def scalacOptions: T[Seq[String]] = amm.compiler.internal(crossValue).scalacOptions()
+    def jvmVersion: T[String] = amm.compiler.internal(crossValue).jvmVersion()
     // ...and the JVM the compiler runs on: the Scala 3 compiler bridge for recent
     // versions needs a newer JVM than the module under test is built with
-    def jvmId = amm.compiler(crossValue).jvmId
-    def javaHome = amm.compiler(crossValue).javaHome
+    def jvmId = amm.compiler.internal(crossValue).jvmId
+    def javaHome = amm.compiler.internal(crossValue).javaHome
 
     def moduleDeps: Seq[JavaModule] =
-      super.moduleDeps ++ Seq(amm.compiler(crossValue).test, amm.repl().test(crossValue))
+      super.moduleDeps ++ Seq(amm.compiler().test, amm.repl().test(crossValue))
     def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
       Deps.scalaJava8Compat
     )
@@ -785,7 +991,7 @@ trait MainModule extends AmmModule {
     def thinWhitelist: T[PathRef] = Task {
       generateApiWhitelist(
         amm.repl.api().exposedClassPath() ++
-          amm.compiler(crossValue).exposedClassPath() ++
+          amm.compiler().exposedClassPath() ++
           Seq(amm.repl().test(crossValue).compile().classes, compile().classes) ++
           defaultResolver().classpath((compileMvnDeps() ++ allMvnDeps()).map(bindDependency()))(
             using CoursierModule.ResolvableBoundDep
@@ -816,8 +1022,14 @@ trait MainModule extends AmmModule {
 object shell extends Cross[ShellModule](fullCrossScalaVersions)
 trait ShellModule extends AmmInternalModule {
   def moduleDeps: Seq[JavaModule] = Seq(amm())
-  def runModuleDeps: Seq[JavaModule] = Seq(amm.compiler(crossScalaVersion))
+  def runModuleDeps: Seq[JavaModule] = Seq(amm.compiler())
   def mainClass: T[Option[String]] = Some("ammonite.AmmoniteMain")
+
+  // amm.compiler is built once per binary Scala version, and asks for the oldest full version
+  // we support for it - the launcher bundles the exact one it is cross-built for instead
+  def resolutionParams: Task[coursier.params.ResolutionParams] = Task.Anon {
+    forcingScalaVersion(super.resolutionParams(), scalaVersion())
+  }
 
   def prependShellScript: T[String] = Task {
     mill.util.Jvm.launcherUniversalScript(
@@ -832,7 +1044,7 @@ trait ShellModule extends AmmInternalModule {
   def thinWhitelist: T[PathRef] = Task {
     generateApiWhitelist(
       amm.repl.api().exposedClassPath() ++
-        amm.compiler(crossScalaVersion).exposedClassPath()
+        amm.compiler().exposedClassPath()
     )
   }
   def localClasspath: T[Seq[PathRef]] = Task {
@@ -902,6 +1114,11 @@ def generateApiWhitelist(replApiCp: Seq[PathRef])(implicit ctx: mill.api.TaskCtx
 object integration extends Cross[IntegrationModule](fullCrossScalaVersions)
 trait IntegrationModule extends AmmInternalModule {
   def moduleDeps: Seq[JavaModule] = Seq(amm(), amm.compiler())
+  // amm.compiler is built once per binary Scala version, and asks for the oldest full version
+  // we support for it - these tests run against the exact one they are cross-built for
+  def resolutionParams: Task[coursier.params.ResolutionParams] = Task.Anon {
+    forcingScalaVersion(super.resolutionParams(), scalaVersion())
+  }
   def mvnDeps: T[Seq[Dep]] = Task {
     super.mvnDeps() ++ (
       if (scalaVersion().startsWith("2.13."))
@@ -1052,26 +1269,22 @@ def publishBundleNameFromTag(tag: String): String =
   "ammonite-" + tag.stripPrefix("v").replace('_', '-')
 
 def publishModulesForScalaVersions(versions: Option[Seq[String]]): Seq[AmmModule] = {
-  val all = moduleInternal.modules.collect { case m: AmmModule => m }
-  val modules = versions match {
-    case None => all
-    case Some(vs) =>
-      val wanted = vs.toSet
-      all.filter(m => m.isCrossFullScalaVersion && wanted(m.crossScalaVersion))
-  }
   versions.foreach { vs =>
-    if (modules.isEmpty)
-      sys.error(s"No publishable modules for Scala versions: ${vs.mkString(", ")}")
+    // Every module is now published once per binary Scala version, so there is nothing left
+    // for a Scala-version-specific bundle to single out
+    sys.error(
+      s"No module is cross-published for full Scala versions any more - drop the " +
+        s"${vs.map("_sv" + _).mkString(", ")} part(s) of the tag and publish a single bundle"
+    )
   }
-  modules
+  moduleInternal.modules.collect { case m: AmmModule => m }
 }
 
 /**
  * Lists the artifacts a `publishMaven` for `tag` would push, and fails if two modules
  * would be published under the same artifact id.
  *
- * Maven Central asks projects to keep the number of modules they publish in check, hence
- * this. Pass a tag to check a Scala-version-specific bundle, like `v3.0.0_sv2.13.16`.
+ * Maven Central asks projects to keep the number of modules they publish in check, hence this.
  */
 def publishedArtifacts(tag: String = "") = {
   val tagOpt = Option(tag).filter(_.nonEmpty)
@@ -1083,8 +1296,7 @@ def publishedArtifacts(tag: String = "") = {
     val duplicates = artifactIds.groupBy(identity).filter(_._2.length > 1).keys.toSeq.sorted
     if (duplicates.nonEmpty)
       sys.error(
-        s"Several modules would be published as ${duplicates.mkString(", ")} - " +
-          "see AmmInternalModule.isPublishedCrossInstance"
+        s"Several modules would be published as ${duplicates.mkString(", ")}"
       )
 
     artifactIds.sorted
