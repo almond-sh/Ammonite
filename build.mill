@@ -56,6 +56,24 @@ val scala3Versions = Seq(scala3Lts, scala3Latest)
 // written by the Scala 3 LTS can be read by all the later Scala 3 versions we support.
 val binCrossScalaVersions =
   Seq(scala2_12Versions.head, scala2_13Versions.head, scala3Lts)
+/**
+ * The Scala versions we test a binary cross-published module instance against.
+ *
+ * Modules other than `amm.compiler` are built once per binary Scala version, but their test
+ * suites have to run against every compiler we support, so the test modules are cross-built
+ * over these instead.
+ */
+def fullScalaVersionsFor(binaryCrossScalaVersion: String): Seq[String] =
+  if (binaryCrossScalaVersion.startsWith("2.12.")) scala2_12Versions
+  else if (binaryCrossScalaVersion.startsWith("2.13.")) scala2_13Versions
+  else scala3Versions
+
+/** The [[binCrossScalaVersions]] entry a full Scala version's modules are built under. */
+def binCrossScalaVersionFor(fullScalaVersion: String): String =
+  binCrossScalaVersions
+    .find(v => fullScalaVersionsFor(v).contains(fullScalaVersion))
+    .getOrElse(sys.error(s"No binary cross Scala version for $fullScalaVersion"))
+
 val assemblyCrossScalaVersions = Seq(
   scala2_12Versions.last,
   scala2_13Versions.last,
@@ -72,7 +90,12 @@ def ciScalaVersions = Task {
     val selected =
       if (includeMiddle) Seq(versions.head, versions(versions.length / 2), versions.last)
       else Seq(versions.head, versions.last)
-    selected.map(version => Map("scala-version" -> version))
+    selected.map(version =>
+      Map(
+        "scala-version" -> version,
+        "binary-scala-version" -> binCrossScalaVersionFor(version)
+      )
+    )
   }
 
   val allEntries =
@@ -90,7 +113,7 @@ def ciScalaVersions = Task {
   Map("include" -> withTerminalFlag)
 }
 
-val latestAssemblies = assemblyCrossScalaVersions.map(amm(_).assembly)
+val latestAssemblies = assemblyCrossScalaVersions.map(shell(_).assembly)
 
 println("GITHUB REF " + sys.env.get("GITHUB_REF"))
 
@@ -207,17 +230,6 @@ trait AmmInternalModule extends CrossSbtModule {
   // We need it to be a Boolean, not T[Boolean]
   def isCrossFullScalaVersion: Boolean = false
   def crossFullScalaVersion: T[Boolean] = Task { isCrossFullScalaVersion }
-
-  /**
-   * Whether this cross instance is the one we publish artifacts from.
-   *
-   * Modules that aren't cross-published for full Scala versions still get built for more Scala
-   * versions than they are published for (so that they can be tested and assembled against each
-   * supported compiler), and all those instances share the same artifact name. Only publish the
-   * ones built with [[binCrossScalaVersions]].
-   */
-  def isPublishedCrossInstance: Boolean =
-    isCrossFullScalaVersion || binCrossScalaVersions.contains(crossScalaVersion)
   def releaseVersion: T[String] = Task {
     if (Version(scalaVersion()) >= Version("3.8.0")) "17"
     else "11"
@@ -472,7 +484,7 @@ trait TerminalModule extends AmmModule {
   }
 }
 
-object amm extends Cross[MainModule](fullCrossScalaVersions) {
+object amm extends Cross[MainModule](binCrossScalaVersions) {
   object util extends Cross[UtilModule](binCrossScalaVersions)
   trait UtilModule extends AmmModule {
     def moduleDeps: Seq[PublishModule] = Seq()
@@ -531,7 +543,7 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
 //    )
 //  }
 
-  object repl extends Cross[ReplModule](fullCrossScalaVersions) {
+  object repl extends Cross[ReplModule](binCrossScalaVersions) {
 
     object api extends Cross[ReplApiModule](binCrossScalaVersions)
     trait ReplApiModule extends AmmModule
@@ -609,16 +621,48 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
       super.compileMvnDeps() ++ (if (isScala3(crossScalaVersion)) Seq.empty[Dep]
                                  else Seq(Deps.scalaReflect(scalaVersion())))
 
-    object test extends AmmTests with AmmDependenciesResourceFileModule {
-      def crossScalaVersion: String = ReplModule.this.crossScalaVersion
-      def scalaVersion: T[String] = ReplModule.this.scalaVersion
+    object test extends Cross[ReplTestModule](fullScalaVersionsFor(crossScalaVersion))
+    trait ReplTestModule extends Cross.Module[String]
+        with AmmTests with AmmDependenciesResourceFileModule {
+      def testModuleName = "test"
+      def crossScalaVersion: String = crossValue
+      def scalaVersion: T[String] = Task { crossValue }
       def dependencyResourceFileName = "amm-test-dependencies.txt"
-      def moduleDeps: Seq[JavaModule] = super.moduleDeps ++ Seq(amm.compiler())
+
+      // JavaTests takes its resolution params from the module under test, which forces the
+      // Scala version that module was built with. These tests are built with a different one
+      // (the module is built once per binary Scala version, its tests once per full one),
+      // so force ours back.
+      def resolutionParams: Task[coursier.params.ResolutionParams] = Task.Anon {
+        val sv = scalaVersion()
+        val org = coursier.Organization(mill.javalib.api.JvmWorkerUtil.scalaOrganization(sv))
+        super.resolutionParams().addForceVersion0(
+          mill.javalib.Lib.scalaArtifacts(sv).toSeq.sorted.map { name =>
+            coursier.Module(org, coursier.ModuleName(name), Map.empty) ->
+              coursier.version.VersionConstraint(sv)
+          }*
+        )
+      }
+
+      // ScalaTests takes these from the module under test too, which was built with another
+      // Scala version - take them from the compiler module for our version instead, it is
+      // built with exactly the Scala version we compile these tests with
+      def scalaCompilerBridge: T[Option[PathRef]] = amm.compiler(crossValue).scalaCompilerBridge()
+      def scalacPluginMvnDeps: T[Seq[Dep]] = amm.compiler(crossValue).scalacPluginMvnDeps()
+      def scalacPluginClasspath: T[Seq[PathRef]] = amm.compiler(crossValue).scalacPluginClasspath()
+      def scalacOptions: T[Seq[String]] = amm.compiler(crossValue).scalacOptions()
+      def jvmVersion: T[String] = amm.compiler(crossValue).jvmVersion()
+      // ...and the JVM the compiler runs on: the Scala 3 compiler bridge for recent
+      // versions needs a newer JVM than the module under test is built with
+      def jvmId = amm.compiler(crossValue).jvmId
+      def javaHome = amm.compiler(crossValue).javaHome
+
+      def moduleDeps: Seq[JavaModule] = super.moduleDeps ++ Seq(amm.compiler(crossValue))
 
       def thinWhitelist: T[PathRef] = Task {
         generateApiWhitelist(
           amm.repl.api().exposedClassPath() ++
-            amm.compiler().exposedClassPath() ++
+            amm.compiler(crossValue).exposedClassPath() ++
             Seq(compile().classes) ++
             defaultResolver().classpath(
               (this.compileMvnDeps() ++ allMvnDeps()).map(bindDependency())
@@ -631,16 +675,24 @@ object amm extends Cross[MainModule](fullCrossScalaVersions) {
       }
 
       def resources: T[Seq[PathRef]] = {
+        // Resolve the sources of the module under test's dependencies with our own resolver,
+        // rather than reusing ReplModule.this.externalSources(): that one is resolved for the
+        // Scala version that module was built with, and source lookups get confused by having
+        // two versions of the Scala library sources around
         (super.resources() ++
           ReplModule.this.sources() ++
-          ReplModule.this.externalSources() ++
+          defaultResolver().classpath(
+            ReplModule.this.allBoundMvnDeps(),
+            sources = true,
+            artifactTypes = None
+          )(using CoursierModule.ResolvableBoundDep) ++
           defaultResolver().classpath(
             mvnDeps().map(bindDependency()),
             sources = true,
             artifactTypes = None
           )(using CoursierModule.ResolvableBoundDep)).distinct
       }
-      def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ amm.compiler().mvnDeps() ++ Seq(
+      def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ amm.compiler(crossValue).mvnDeps() ++ Seq(
         Deps.scalazCore,
         Deps.coursierVersions(scalaVersion())
       )
@@ -658,15 +710,11 @@ trait MainModule extends AmmModule {
     amm.repl()
   )
 
-  // The launcher and the assembly need a compiler to run, but amm.compiler is published for
-  // each full Scala version, while we are published for binary Scala versions only - so it
-  // can't be a published dependency of ours. Users add the ammonite-compiler variant matching
-  // their own Scala version, and we pick it up via ammonite.compiler.iface.CompilerBuilderFactory.
-  def runModuleDeps: Seq[JavaModule] = Seq(amm.compiler())
-  def publishXmlDeps: Task[Seq[Dependency]] = Task.Anon {
-    val compilerArtifact = amm.compiler().artifactMetadata()
-    super.publishXmlDeps().filter(_.artifact != compilerArtifact)
-  }
+  // No dependency on amm.compiler, neither published nor at run time: it is published for each
+  // full Scala version, while we are published for binary Scala versions only. Users add the
+  // ammonite-compiler variant matching their own Scala version, and we pick it up via
+  // ammonite.compiler.iface.CompilerBuilderFactory. The `shell` module pairs us with one
+  // specific compiler to build the launcher and the assembly.
 
   def runClasspath: T[Seq[PathRef]] =
     super.runClasspath() ++
@@ -676,6 +724,100 @@ trait MainModule extends AmmModule {
       amm.repl().sources() ++
       sources() ++
       externalSources()
+
+  def thinWhitelist: T[PathRef] = Task {
+    generateApiWhitelist(
+      amm.repl.api().exposedClassPath() ++
+        amm.compiler().exposedClassPath()
+    )
+  }
+  def localClasspath: T[Seq[PathRef]] = Task {
+    Seq(thinWhitelist()) ++ super.localClasspath()
+  }
+
+  object test extends Cross[MainTestModule](fullScalaVersionsFor(crossScalaVersion))
+  trait MainTestModule extends Cross.Module[String] with AmmTests {
+    def testModuleName = "test"
+    def crossScalaVersion: String = crossValue
+    def scalaVersion: T[String] = Task { crossValue }
+
+    // JavaTests takes its resolution params from the module under test, which forces the
+    // Scala version that module was built with. These tests are built with a different one
+    // (the module is built once per binary Scala version, its tests once per full one),
+    // so force ours back.
+    def resolutionParams: Task[coursier.params.ResolutionParams] = Task.Anon {
+      val sv = scalaVersion()
+      val org = coursier.Organization(mill.javalib.api.JvmWorkerUtil.scalaOrganization(sv))
+      super.resolutionParams().addForceVersion0(
+        mill.javalib.Lib.scalaArtifacts(sv).toSeq.sorted.map { name =>
+        coursier.Module(org, coursier.ModuleName(name), Map.empty) ->
+          coursier.version.VersionConstraint(sv)
+        }*
+      )
+    }
+
+    // ScalaTests takes these from the module under test too, which was built with another
+    // Scala version - take them from the compiler module for our version instead, it is
+    // built with exactly the Scala version we compile these tests with
+    def scalaCompilerBridge: T[Option[PathRef]] = amm.compiler(crossValue).scalaCompilerBridge()
+    def scalacPluginMvnDeps: T[Seq[Dep]] = amm.compiler(crossValue).scalacPluginMvnDeps()
+    def scalacPluginClasspath: T[Seq[PathRef]] = amm.compiler(crossValue).scalacPluginClasspath()
+    def scalacOptions: T[Seq[String]] = amm.compiler(crossValue).scalacOptions()
+    def jvmVersion: T[String] = amm.compiler(crossValue).jvmVersion()
+    // ...and the JVM the compiler runs on: the Scala 3 compiler bridge for recent
+    // versions needs a newer JVM than the module under test is built with
+    def jvmId = amm.compiler(crossValue).jvmId
+    def javaHome = amm.compiler(crossValue).javaHome
+
+    def moduleDeps: Seq[JavaModule] =
+      super.moduleDeps ++ Seq(amm.compiler(crossValue).test, amm.repl().test(crossValue))
+    def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
+      Deps.scalaJava8Compat
+    )
+
+    // Some tests run scripts whose arguments default to os.pwd, and check the
+    // directory name they end up with - which is the name of the directory this
+    // repository was checked out in.
+    def forkEnv: T[Map[String, String]] = super.forkEnv() ++ Seq(
+      "AMMONITE_REPO_DIR_NAME" -> BuildCtx.workspaceRoot.last
+    )
+
+    def thinWhitelist: T[PathRef] = Task {
+      generateApiWhitelist(
+        amm.repl.api().exposedClassPath() ++
+          amm.compiler(crossValue).exposedClassPath() ++
+          Seq(amm.repl().test(crossValue).compile().classes, compile().classes) ++
+          defaultResolver().classpath((compileMvnDeps() ++ allMvnDeps()).map(bindDependency()))(
+            using CoursierModule.ResolvableBoundDep
+          )
+      )
+    }
+
+    // Need to duplicate this from MainModule due to Mill not properly propagating it through
+    def runClasspath: T[Seq[PathRef]] =
+      Seq(thinWhitelist()) ++
+        super.runClasspath() ++
+        terminal().sources() ++
+        amm.util().sources() ++
+        amm.repl.api().sources() ++
+        amm.repl().sources() ++
+        sources() ++
+        externalSources()
+
+  }
+}
+
+/**
+ * The Ammonite launcher and assembly for one exact Scala version.
+ *
+ * `amm` is published per binary Scala version, but a launcher has to bundle a compiler for
+ * one specific Scala version, so this is built once per full Scala version. Not published.
+ */
+object shell extends Cross[ShellModule](fullCrossScalaVersions)
+trait ShellModule extends AmmInternalModule {
+  def moduleDeps: Seq[JavaModule] = Seq(amm())
+  def runModuleDeps: Seq[JavaModule] = Seq(amm.compiler(crossScalaVersion))
+  def mainClass: T[Option[String]] = Some("ammonite.AmmoniteMain")
 
   def prependShellScript: T[String] = Task {
     mill.util.Jvm.launcherUniversalScript(
@@ -690,7 +832,7 @@ trait MainModule extends AmmModule {
   def thinWhitelist: T[PathRef] = Task {
     generateApiWhitelist(
       amm.repl.api().exposedClassPath() ++
-        amm.compiler().exposedClassPath()
+        amm.compiler(crossScalaVersion).exposedClassPath()
     )
   }
   def localClasspath: T[Seq[PathRef]] = Task {
@@ -731,43 +873,6 @@ trait MainModule extends AmmModule {
       }
   }
 
-  object test extends AmmTests {
-    def moduleDeps: Seq[JavaModule] =
-      super.moduleDeps ++ Seq(amm.compiler().test, amm.repl().test)
-    def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-      Deps.scalaJava8Compat
-    )
-
-    // Some tests run scripts whose arguments default to os.pwd, and check the
-    // directory name they end up with - which is the name of the directory this
-    // repository was checked out in.
-    def forkEnv: T[Map[String, String]] = super.forkEnv() ++ Seq(
-      "AMMONITE_REPO_DIR_NAME" -> BuildCtx.workspaceRoot.last
-    )
-
-    def thinWhitelist: T[PathRef] = Task {
-      generateApiWhitelist(
-        amm.repl.api().exposedClassPath() ++
-          amm.compiler().exposedClassPath() ++
-          Seq(amm.repl().test.compile().classes, compile().classes) ++
-          defaultResolver().classpath((compileMvnDeps() ++ allMvnDeps()).map(bindDependency()))(
-            using CoursierModule.ResolvableBoundDep
-          )
-      )
-    }
-
-    // Need to duplicate this from MainModule due to Mill not properly propagating it through
-    def runClasspath: T[Seq[PathRef]] =
-      Seq(thinWhitelist()) ++
-        super.runClasspath() ++
-        terminal().sources() ++
-        amm.util().sources() ++
-        amm.repl.api().sources() ++
-        amm.repl().sources() ++
-        sources() ++
-        externalSources()
-
-  }
 }
 
 def generateApiWhitelist(replApiCp: Seq[PathRef])(implicit ctx: mill.api.TaskCtx.Dest) = {
@@ -808,9 +913,9 @@ trait IntegrationModule extends AmmInternalModule {
   object test extends AmmTests {
     def testLauncher: T[String] = Task {
       if (scala.util.Properties.isWin)
-        amm().launcher().path.toString
+        shell(crossScalaVersion).launcher().path.toString
       else
-        amm().assembly().path.toString
+        shell(crossScalaVersion).assembly().path.toString
     }
     def forkEnv: T[Map[String, String]] = super.forkEnv() ++ Seq(
       "AMMONITE_ASSEMBLY" -> testLauncher()
@@ -838,11 +943,24 @@ def unitTest(scalaVersion: String = "")
   val binPred = (v: String) =>
     v.startsWith(scalaVersion.split("[.\\-]").take(if (v.startsWith("2")) 2 else 1).mkString("."))
   val pred = (_: String).startsWith(scalaVersion)
-  val tests = Seq(
-    selectCrossPrefix(terminal, binPred)(_.test),
-    selectCrossPrefix(amm.repl, pred)(_.test),
-    selectCrossPrefix(amm, pred)(_.test)
-  ).flatten
+
+  // amm and amm.repl are built once per binary Scala version, but their tests are built
+  // once per full Scala version, so that they run against each compiler we support
+  val replTests: Seq[TestModule] = amm.repl.items
+    .map(_.module.apply())
+    .filter(m => binPred(m.crossScalaVersion))
+    .flatMap(_.test.items.map(_.module.apply()))
+    .filter(m => pred(m.crossValue))
+  val mainTests: Seq[TestModule] = amm.items
+    .map(_.module.apply())
+    .filter(m => binPred(m.crossScalaVersion))
+    .flatMap(_.test.items.map(_.module.apply()))
+    .filter(m => pred(m.crossValue))
+
+  val tests: Seq[TestModule] =
+    selectCrossPrefix(terminal, binPred)(_.test) ++ replTests ++ mainTests
+  if (tests.isEmpty)
+    sys.error(s"No test modules matching Scala version '$scalaVersion'")
 
   val log = Task.Anon { Task.log.streams.out.println(s"Testing modules: ${tests.mkString(", ")}") }
 
@@ -934,9 +1052,7 @@ def publishBundleNameFromTag(tag: String): String =
   "ammonite-" + tag.stripPrefix("v").replace('_', '-')
 
 def publishModulesForScalaVersions(versions: Option[Seq[String]]): Seq[AmmModule] = {
-  val all = moduleInternal.modules.collect {
-    case m: AmmModule if m.isPublishedCrossInstance => m
-  }
+  val all = moduleInternal.modules.collect { case m: AmmModule => m }
   val modules = versions match {
     case None => all
     case Some(vs) =>

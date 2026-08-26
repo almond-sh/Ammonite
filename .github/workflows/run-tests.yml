@@ -47,8 +47,8 @@ jobs:
         run: ./mill -i -j1 -k 'terminal.__.test'
       - name: Test Scala ${{ matrix.scala-version }}
         run: |
-          ./mill -i -j1 -k 'amm.repl[${{ matrix.scala-version }}].__.test'
-          ./mill -i -j1 -k 'amm[${{ matrix.scala-version }}].__.test'
+          ./mill -i -j1 -k 'amm.repl[${{ matrix.binary-scala-version }}].test[${{ matrix.scala-version }}]'
+          ./mill -i -j1 -k 'amm[${{ matrix.binary-scala-version }}].test[${{ matrix.scala-version }}]'
 
   itest:
     needs: versions

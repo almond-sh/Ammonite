@@ -126,6 +126,9 @@ per *binary* Scala version instead - `ammonite_3`, `ammonite-repl_2.13`,
 Central down: a newly supported Scala version costs one module rather than
 eight, and the whole project publishes 47 modules rather than 262.
 
+`amm` deliberately has no dependency on `amm/compiler` at all - not even a run-time
+one - so that nothing pins a single Scala version for all users of a binary version.
+
 Two consequences:
 
 - **Users depend on two artifacts**, the binary-versioned entry point and the
@@ -151,11 +154,29 @@ Two consequences:
   usable across the whole 2.13 range we support. For Scala 3 the LTS plays that
   role, its TASTy files being readable by later Scala 3 versions.
 
-Note that `amm`, `amm/repl` and `amm/compiler` are still *built* for every
-supported Scala version, even though the first two are only published per binary
-version: their test suites and the `amm` assemblies need to run against each
-compiler. `isPublishedCrossInstance` in `build.mill` picks the instances we
-actually publish.
+Only `amm/compiler` is cross-built for every supported Scala version. The other
+modules are built once per binary Scala version, and the pieces that do need one
+specific compiler are cross-built separately:
+
+- **test modules** are nested crosses over the full Scala versions of their
+  module's binary version, so `amm/repl` built with 2.13.3 has its tests built
+  and run with each of 2.13.3 … 2.13.18:
+
+  ```
+  ./mill 'amm.repl[2.13.3].test[2.13.18]'
+  ./mill 'amm[2.13.3].test[2.13.18]'
+  ```
+
+  This also means the tests exercise the artifacts we actually publish, rather
+  than a build of them made with the Scala version under test. Mill's
+  `JavaTests`/`ScalaTests` assume a test module shares its module's Scala
+  version and inherit `resolutionParams`, `scalaCompilerBridge`, the scalac
+  plugins, `jvmId` and `javaHome` from it - those are overridden in `build.mill`
+  to follow the test's own Scala version instead.
+
+- **`shell`** is an unpublished module cross-built over every full Scala version,
+  pairing `amm` with the `amm/compiler` for that version to build the launcher
+  and the assembly. `integration` tests run against it.
 
 `./mill show publishedArtifacts` lists what a release would push to Maven
 Central, and fails if two module instances would collide on one artifact id.
