@@ -39,8 +39,8 @@ object Scripts {
         // `methodsymbol.annotations` ends up being empty.
         extraCode = Util.normalizeNewlines(
           s"""
-             |val $$routesOuter = this
-             |object $$routes
+             |val `$$routesOuter` = this
+             |object `$$routes`
              |extends scala.Function0[mainargs.ParserForMethods[$$routesOuter.type]]{
              |  def apply() = $genRoutesCode
              |}

@@ -18,7 +18,7 @@ object DefaultCodeWrapper extends CodeWrapper {
 $imports
 
 object ${indexedWrapperName.backticked}{\n""")
-    val bottom = normalizeNewlines(s"""\ndef $$main() = { $printCode }
+    val bottom = normalizeNewlines(s"""\ndef `$$main`() = { $printCode }
   override def toString = "${indexedWrapperName.encoded}"
   $extraCode
 }

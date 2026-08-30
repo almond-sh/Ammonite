@@ -50,12 +50,12 @@ $imports
 
 object ${indexedWrapperName.backticked}{
   val instance: Helper.type = Helper
-  def $$main() = instance.$$main()
+  def `$$main`() = instance.$$main()
 
   object Helper extends _root_.java.io.Serializable {
 """)
 
-      val bottom = normalizeNewlines(s"""\ndef $$main() = { $printCode }
+      val bottom = normalizeNewlines(s"""\ndef `$$main`() = { $printCode }
   override def toString = "${indexedWrapperName.encoded}";
   $extraCode
 }}
@@ -118,7 +118,7 @@ object ${indexedWrapperName.backticked}{
 object ${indexedWrapperName.backticked}{
   val wrapper = new ${indexedWrapperName.backticked}
   val instance = new wrapper.Helper
-  def $$main() = instance.$$main()
+  def `$$main`() = instance.$$main()
 }
 
 final class ${indexedWrapperName.backticked} extends _root_.java.io.Serializable {
@@ -132,7 +132,7 @@ $reworkedImports
 
 final class Helper extends _root_.java.io.Serializable{\n""")
 
-      val bottom = normalizeNewlines(s"""\ndef $$main() = { $printCode }
+      val bottom = normalizeNewlines(s"""\ndef `$$main`() = { $printCode }
 
   override def toString = "${indexedWrapperName.encoded}";
   $extraCode
