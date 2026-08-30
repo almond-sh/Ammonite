@@ -1118,6 +1118,31 @@ def generateApiWhitelist(replApiCp: Seq[PathRef])(implicit ctx: mill.api.TaskCtx
   PathRef(ctx.dest)
 }
 
+/**
+ * The sbt distribution `integration`'s `testIvySnapshotNoCache` needs.
+ *
+ * That test publishes a dummy library locally with sbt, then resolves it from a script. We
+ * bring our own rather than expect one on the `PATH`, so that the test runs the same way here
+ * and in CI - `project/build.properties` of the dummy library pins the sbt version this
+ * launcher then starts.
+ */
+val sbtUrl = "https://github.com/sbt/sbt/releases/download/v2.0.8/sbt-2.0.8.tgz"
+
+/** The `bin` directory of [[sbtUrl]], fetched and extracted by coursier's archive cache. */
+def sbtBinDir: T[String] = Task {
+  val cache = coursier.cache.ArchiveCache[coursier.util.Task]()
+  val archiveDir = Await.result(
+    cache.get(coursier.util.Artifact(sbtUrl)).future()(using cache.cache.ec),
+    duration.Duration.Inf
+  ) match {
+    case Left(err) => throw new Exception(s"Error getting $sbtUrl", err)
+    case Right(dir) => os.Path(dir)
+  }
+  val binDir = archiveDir / "sbt" / "bin"
+  if (!os.isDir(binDir)) sys.error(s"$binDir not found in the archive at $sbtUrl")
+  binDir.toString
+}
+
 object integration extends Cross[IntegrationModule](fullCrossScalaVersions)
 trait IntegrationModule extends AmmInternalModule {
   def moduleDeps: Seq[JavaModule] = Seq(amm(), amm.compiler())
@@ -1141,9 +1166,20 @@ trait IntegrationModule extends AmmInternalModule {
       else
         shell(crossScalaVersion).assembly().path.toString
     }
-    def forkEnv: T[Map[String, String]] = super.forkEnv() ++ Seq(
-      "AMMONITE_ASSEMBLY" -> testLauncher()
-    )
+    // testIvySnapshotNoCache shells out to sbt, which needs a JVM of its own - hand it both
+    // the sbt we fetched and the JVM this module is built against, rather than rely on
+    // whatever the machine running the tests happens to have installed
+    def forkEnv: T[Map[String, String]] = Task {
+      val env = super.forkEnv() ++ Seq("AMMONITE_ASSEMBLY" -> testLauncher())
+      val javaHomeOpt = javaHome().map(_.path)
+      val pathEntries =
+        Seq(sbtBinDir()) ++
+          javaHomeOpt.map(home => (home / "bin").toString) ++
+          Task.env.get("PATH")
+      env ++
+        javaHomeOpt.map(home => "JAVA_HOME" -> home.toString) ++
+        Seq("PATH" -> pathEntries.mkString(java.io.File.pathSeparator))
+    }
   }
 }
 
