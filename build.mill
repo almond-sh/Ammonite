@@ -44,7 +44,7 @@ val scala2_13Versions = 3.to(18)
   .map(v => s"2.13.$v")
 
 val scala3Lts = "3.3.8"
-val scala3Latest = "3.8.4"
+val scala3Latest = "3.9.0"
 
 val scala2Versions = scala2_12Versions ++ scala2_13Versions
 val scala3Versions = Seq(scala3Lts, scala3Latest)
@@ -224,9 +224,16 @@ val compilerInternalDirs: Seq[CompilerInternalDir] = {
       sv => isScala3(sv) && Version(sv) < Version("3.7.0")
     ),
     CompilerInternalDir(
-      "scala-3.7+",
+      "scala-3.7.0-3.8",
       Seq("CompletionMaker"),
-      sv => isScala3(sv) && Version(sv) >= Version("3.7.0")
+      sv => isScala3(sv) && Version(sv) >= Version("3.7.0") && Version(sv) < Version("3.9.0")
+    ),
+    // 3.9.0 made Completion.CompletionResult.names hand back the site each denotation was
+    // found at, along with the denotations themselves
+    CompilerInternalDir(
+      "scala-3.9.0+",
+      Seq("CompletionMaker"),
+      sv => isScala3(sv) && Version(sv) >= Version("3.9.0")
     )
   )
 }

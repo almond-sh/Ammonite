@@ -11,8 +11,8 @@ import dotty.tools.dotc.core.Symbols.{Symbol, defn}
 import dotty.tools.dotc.interactive.{Completion, Interactive}
 import dotty.tools.dotc.util.SourcePosition
 
-/** Ammonite's completions, for the compilers of 3.7.0 and later. */
-object AmmCompletion3_7 {
+/** Ammonite's completions, for the compilers of 3.7.0 to 3.8.x. */
+object AmmCompletion3_7_0__3_8 {
 
   def maybeBackticked(input: String, hasBackTick: Boolean): Completion =
     Completion.backtickCompletions(Completion(input, "", Nil), hasBackTick)
