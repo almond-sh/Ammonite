@@ -24,23 +24,34 @@ object Util {
     }
   }
   val upPathSegment = "^"
-  def pathToPackageWrapper(flexiblePkgName0: Seq[Name], relPath0: os.RelPath): (Seq[Name], Name) = {
+
+  /**
+   * The package and wrapper name a script gets from where it sits, relative to the working
+   * directory or to the script that imports it.
+   *
+   * @param relPath0 the relative path of the script, whose leading `..` segments say how
+   *                 many directories up from the working directory it lives
+   */
+  def pathToPackageWrapper(
+      flexiblePkgName0: Seq[Name],
+      relPath0: java.nio.file.Path
+  ): (Seq[Name], Name) = {
+    val relPath = relPath0.normalize()
+    val allSegments = (0 until relPath.getNameCount).map(relPath.getName(_).toString)
+    val fileName = allSegments.last
     var flexiblePkgName = flexiblePkgName0
-    var relPath = relPath0 / os.up
-    val fileName = relPath0.last
+    // the directory the script sits in, as a number of directories up, then a number down
+    var ups = allSegments.takeWhile(_ == "..").length
+    val segments = allSegments.drop(ups).dropRight(1)
     while (
       flexiblePkgName.length > 1 &&
       flexiblePkgName.last.encoded != upPathSegment &&
-      relPath.ups > 0
+      ups > 0
     ) {
       flexiblePkgName = flexiblePkgName.dropRight(1)
-      relPath = os.RelPath(relPath.segments, relPath.ups - 1)
+      ups -= 1
     }
-    val pkg = {
-      val ups = Seq.fill(relPath.ups)(upPathSegment)
-      val rest = relPath.segments
-      flexiblePkgName ++ (ups ++ rest).map(Name(_))
-    }
+    val pkg = flexiblePkgName ++ (Seq.fill(ups)(upPathSegment) ++ segments).map(Name(_))
     val wrapper = fileName.lastIndexOf('.') match {
       case -1 => fileName
       case i => fileName.take(i)
@@ -86,12 +97,12 @@ object Util {
       wrapperName: Name,
       flexiblePkgName: Seq[Name],
       pkgRoot: Seq[Name],
-      path: Option[os.Path]
+      path: Option[java.nio.file.Path]
   ) {
     def pkgName = pkgRoot ++ flexiblePkgName
     def fullName = pkgName :+ wrapperName
 
-    def fileName = path.fold(filePathPrefix.last + ".sc")(_.last)
+    def fileName = path.fold(filePathPrefix.last + ".sc")(_.getFileName.toString)
     def jvmPathPrefix = Util.encodeJvmPath(fullName)
     def filePathPrefix = Util.encodeFilePath(fullName)
     def printablePath = path match {

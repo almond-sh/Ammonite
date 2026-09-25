@@ -59,13 +59,13 @@ object PredefInitialization {
       basePredefs ++
         storage.loadPredef.map {
           case (code, path) =>
-            PredefInfo(Name(path.last.stripSuffix(".sc")), code, false, Some(path))
+            PredefInfo(Name(path.last.stripSuffix(".sc")), code, false, Some(path.toNIO))
         } ++
         customPredefs
     }
 
     Res.fold((), predefs) { (_, predefInfo) =>
-      predefInfo.path.foreach(watch)
+      predefInfo.path.foreach(p => watch(os.Path(p)))
       if (predefInfo.code.isEmpty) Res.Success(())
       else {
         processModule(

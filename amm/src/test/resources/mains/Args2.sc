@@ -2,6 +2,6 @@
 val x = 1
 
 @main
-def main(i: Int, s: String, path: os.Path = os.pwd): Unit = {
-  println(s"Hello! ${s * i} ${path.last}.")
+def main(i: Int, s: String, path: java.nio.file.Path = os.pwd.toNIO): Unit = {
+  println(s"Hello! ${s * i} ${path.getFileName}.")
 }

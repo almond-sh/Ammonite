@@ -16,7 +16,12 @@ import scala.reflect.NameTransformer
  * classpath, which is true for many "internal" predefs which only do
  * imports from Ammonite's own packages and don't rely on external code
  */
-case class PredefInfo(name: Name, code: String, hardcoded: Boolean, path: Option[os.Path])
+case class PredefInfo(
+    name: Name,
+    code: String,
+    hardcoded: Boolean,
+    path: Option[java.nio.file.Path]
+)
 
 /**
  * Exception for reporting script compilation failures

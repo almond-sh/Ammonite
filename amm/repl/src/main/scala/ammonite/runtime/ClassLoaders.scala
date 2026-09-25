@@ -286,7 +286,7 @@ class SpecialClassLoader(
 
   private var classpathSignature0 = parentSignature
   def classpathSignature: Seq[(Either[String, java.net.URL], Long)] = classpathSignature0
-  def classpathHash(wd: Option[os.Path]) = {
+  def classpathHash(wd: Option[java.nio.file.Path]) = {
     Util.md5Hash(
       // Include the current working directory in the classpath hash, to make
       // sure different scripts cached

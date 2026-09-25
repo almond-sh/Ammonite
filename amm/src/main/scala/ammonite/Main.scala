@@ -88,7 +88,7 @@ case class Main(
 
   def loadedPredefFile = predefFile match {
     case Some(path) =>
-      try Right(Some(PredefInfo(Name("FilePredef"), os.read(path), false, Some(path))))
+      try Right(Some(PredefInfo(Name("FilePredef"), os.read(path), false, Some(path.toNIO))))
       catch {
         case e: NoSuchFileException =>
           Left((
@@ -137,7 +137,7 @@ case class Main(
           PredefInfo(Name("ArgsPredef"), argString, false, None)
         ),
         customPredefs = predefFileInfoOpt.toSeq ++ Seq(
-          PredefInfo(Name("CodePredef"), predefCode, false, Some(wd / "(console)"))
+          PredefInfo(Name("CodePredef"), predefCode, false, Some((wd / "(console)").toNIO))
         ),
         wd = wd,
         welcomeBanner = welcomeBanner,

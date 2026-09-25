@@ -64,7 +64,7 @@ class TestRepl(compilerBuilder: ICompilerBuilder = CompilerBuilder()) { self =>
 
   val baseImports = ammonite.main.Defaults.replImports ++ Interpreter.predefImports
   val basePredefs = Seq(
-    PredefInfo(Name("testPredef"), predef._1, false, predef._2)
+    PredefInfo(Name("testPredef"), predef._1, false, predef._2.map(_.toNIO))
   )
   val customPredefs = Seq()
 
@@ -154,7 +154,8 @@ class TestRepl(compilerBuilder: ICompilerBuilder = CompilerBuilder()) { self =>
         }
       }
 
-      def exec(file: os.Path): Unit = {
+      def exec(file0: java.nio.file.Path): Unit = {
+        val file = os.Path(file0, os.pwd)
         interp.watch(file)
         apply(normalizeNewlines(os.read(file)))
       }

@@ -129,7 +129,7 @@ final class ScriptCompiler(
       dependencies: Script.ResolvedDependencies
   ) {
     def stale: Boolean =
-      script.codeSource.path.exists { path =>
+      script.codeSource.path.map(os.Path(_)).exists { path =>
         !os.isFile(path) || {
           // short-circuit that by looking at the file size?
           val content = os.read(path)
