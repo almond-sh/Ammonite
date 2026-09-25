@@ -66,9 +66,9 @@ object BuiltinTests extends TestSuite {
 
         @ assert(repl.fullImports.toString.contains("definedValue"))
 
-        @ assert(!repl.imports.toString.contains("ammonite.runtime.tools"))
+        @ assert(!repl.imports.toString.contains("ammonite.compiler.tools"))
 
-        @ assert(repl.fullImports.toString.contains("ammonite.runtime.tools"))
+        @ assert(repl.fullImports.toString.contains("ammonite.compiler.tools"))
       """)
     }
 
