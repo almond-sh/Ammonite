@@ -631,7 +631,6 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
     def moduleDeps: Seq[PublishModule] = Seq()
     def mvnDeps: T[Seq[Dep]] = Task {
       super.mvnDeps() ++ Seq(
-        Deps.osLib,
         Deps.typename,
         Deps.scalaCollectionCompat,
         Deps.fansi,
@@ -705,7 +704,8 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
       super.mvnDeps() ++ scalaCompilerMvnDeps(scalaVersion(), isScala2()) ++ scalaSpecificDeps ++
         Seq(
           Deps.javassist,
-          Deps.javaparserCore
+          Deps.javaparserCore,
+          Deps.osLib
         )
     }
 
@@ -823,6 +823,7 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
       Deps.jlineJna,
       Deps.jlineReader,
       Deps.scalaXml(scalaVersion()),
+      Deps.osLib,
       // from the former amm.runtime
       Deps.classPathUtil,
       Deps.upickle,

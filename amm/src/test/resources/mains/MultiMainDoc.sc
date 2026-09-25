@@ -15,6 +15,6 @@ def functionB(@arg(doc =
               i: Int ,
               @arg(doc = "the string to repeat")
               s: String ,
-              path: os.Path = os.pwd) = {
-  println(s"Hello! ${s * i} ${path.relativeTo(os.pwd)}.")
+              path: java.nio.file.Path = os.pwd.toNIO) = {
+  println(s"Hello! ${s * i} ${os.pwd.toNIO.relativize(path)}.")
 }

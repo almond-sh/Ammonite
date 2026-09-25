@@ -122,7 +122,7 @@ object ImportHook {
         wrapperPath: Seq[Name]
     ) = {
 
-      source.path match {
+      source.path.map(os.Path(_)) match {
         case None => Left("Cannot resolve $file import in code without source")
         case Some(currentScriptPath) =>
           val (relativeModules, files, missing) = resolveFiles(
@@ -141,7 +141,7 @@ object ImportHook {
 
                 val (flexiblePkg, wrapper) = Util.pathToPackageWrapper(
                   source.flexiblePkgName,
-                  filePath relativeTo currentScriptPath / os.up
+                  (filePath relativeTo currentScriptPath / os.up).toNIO
                 )
 
                 val fullPrefix = source.pkgRoot ++ flexiblePkg ++ Seq(wrapper) ++ wrapperPath
@@ -157,7 +157,7 @@ object ImportHook {
                   wrapper,
                   flexiblePkg,
                   source.pkgRoot,
-                  Some(filePath)
+                  Some(filePath.toNIO)
                 )
 
                 Result.Source(
@@ -254,11 +254,11 @@ object ImportHook {
             if elem.contains(JFile.pathSeparator) || elem.contains(
               JFile.separator
             ) || elem.contains("/") || elem.contains("${") =>
-          val cwd = source.path.fold(os.pwd)(_ / os.up)
+          val cwd = source.path.fold(os.pwd)(os.Path(_) / os.up)
           val cp = ClassPathUtil.classPath(elem).map(os.Path(_, cwd))
           Right(Seq(Result.ClassPath(None, cp, plugin)))
         case _ =>
-          source.path match {
+          source.path.map(os.Path(_)) match {
             case None => Left("Cannot resolve $cp import in code without source")
             case Some(currentScriptPath) =>
               val (relativeModules, files, missing) = resolveFiles(

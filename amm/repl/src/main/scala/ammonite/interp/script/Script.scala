@@ -29,7 +29,7 @@ final case class Script(
 
   def segments(wd: Option[os.Path]): Option[Seq[String]] =
     for {
-      p <- codeSource.path
+      p <- codeSource.path.map(os.Path(_))
       segments = wd.fold(p.segments.toVector)(wd0 => p.relativeTo(wd0).segments.toVector)
     } yield segments
 
@@ -120,7 +120,7 @@ object Script {
           case Some(p) =>
             Dependencies(
               scriptDependencies =
-                Seq(Import(Right(p), s.exec, s.codeSource, s.hookImports))
+                Seq(Import(Right(os.Path(p)), s.exec, s.codeSource, s.hookImports))
             )
           case None =>
             Dependencies() // TODO import $url

@@ -147,7 +147,7 @@ trait ReplLoad {
    * Compilation units separated by `@\n` are evaluated sequentially.
    * If an error happens it prints an error message to the console.
    */
-  def exec(path: os.Path): Unit
+  def exec(path: java.nio.file.Path): Unit
 }
 
 trait Session {

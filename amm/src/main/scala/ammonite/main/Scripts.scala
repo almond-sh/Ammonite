@@ -18,7 +18,7 @@ object Scripts {
       scriptArgs: Seq[String] = Nil
   ) = {
     interp.watch(path)
-    val (pkg, wrapper) = Util.pathToPackageWrapper(Seq(), path relativeTo wd)
+    val (pkg, wrapper) = Util.pathToPackageWrapper(Seq(), (path relativeTo wd).toNIO)
     val genRoutesCode = "mainargs.ParserForMethods[$routesOuter.type]($routesOuter)"
 
     for {
@@ -30,7 +30,7 @@ object Scripts {
 
       processed <- interp.processModule(
         scriptTxt,
-        CodeSource(wrapper, pkg, Seq(Name("ammonite"), Name("$file")), Some(path)),
+        CodeSource(wrapper, pkg, Seq(Name("ammonite"), Name("$file")), Some(path.toNIO)),
         autoImport = true,
         // Not sure why we need to wrap this in a separate `$routes` object,
         // but if we don't do it for some reason the `generateRoutes` macro

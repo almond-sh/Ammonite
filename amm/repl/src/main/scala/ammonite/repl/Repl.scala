@@ -129,7 +129,8 @@ class Repl(
             }
           }
 
-          def exec(file: os.Path): Unit = {
+          def exec(file0: java.nio.file.Path): Unit = {
+            val file = os.Path(file0, wd)
             interp.watch(file)
             apply(normalizeNewlines(os.read(file)))
           }

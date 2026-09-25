@@ -111,12 +111,12 @@ final case class ScriptProcessor(
   }
 
   def load(path: os.Path): Script = {
-    val (pkg, wrapper) = Util.pathToPackageWrapper(Nil, path.relativeTo(wd))
+    val (pkg, wrapper) = Util.pathToPackageWrapper(Nil, path.relativeTo(wd).toNIO)
     val codeSource = CodeSource(
       wrapper,
       pkg,
       Seq(Name("ammonite"), Name("$file")),
-      Some(path)
+      Some(path.toNIO)
     )
     val code = os.read(path)
     load(code, codeSource)

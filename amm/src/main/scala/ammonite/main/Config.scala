@@ -1,7 +1,6 @@
 package ammonite.main
 
 import mainargs.{main, arg, Flag, Leftover, ParserForClass}
-import ammonite.repl.tools.Util.PathRead
 @main
 case class Config(
     core: Config.Core,
@@ -11,6 +10,16 @@ case class Config(
 )
 
 object Config {
+
+  /**
+   * Reads the `os.Path` options below. User scripts get a `java.nio.file.Path` reader
+   * instead, from [[ammonite.repl.tools.Util.PathRead]], so that the modules they
+   * compile against don't depend on os-lib.
+   */
+  implicit object PathRead extends mainargs.TokensReader.Simple[os.Path] {
+    def shortName = "path"
+    def read(strs: Seq[String]) = Right(os.Path(strs.last, os.pwd))
+  }
 
   @main
   case class Core(

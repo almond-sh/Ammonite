@@ -238,7 +238,7 @@ class Interpreter(
       wrapperName,
       Seq(),
       parameters.pkgName,
-      Some(wd / "(console)")
+      Some((wd / "(console)").toNIO)
     )
     val (hookStmts, importTrees) = parser().parseImportHooks(codeSource, stmts)
 
@@ -464,7 +464,7 @@ class Interpreter(
               wrapperName,
               Seq(),
               parameters.pkgName,
-              Some(wd / "(console)")
+              Some((wd / "(console)").toNIO)
             ),
             (processed, indexedWrapperName) =>
               evaluateLine(processed, fileName, indexedWrapperName, false, incrementLine),
@@ -664,11 +664,11 @@ class Interpreter(
   abstract class DefaultLoadJar extends LoadJar {
     def handleClasspath(jar: java.net.URL): Unit
 
-    def cp(jar: os.Path): Unit = {
-      handleClasspath(jar.toNIO.toUri.toURL)
+    def cp(jar: java.nio.file.Path): Unit = {
+      handleClasspath(os.Path(jar, wd).toNIO.toUri.toURL)
     }
-    def cp(jars: Seq[os.Path]): Unit = {
-      jars.map(_.toNIO.toUri.toURL).foreach(handleClasspath)
+    def cp(jars: Seq[java.nio.file.Path]): Unit = {
+      jars.map(os.Path(_, wd).toNIO.toUri.toURL).foreach(handleClasspath)
     }
     def cp(jar: java.net.URL): Unit = {
       handleClasspath(jar)
@@ -689,7 +689,7 @@ class Interpreter(
   lazy val interpApi: InterpAPI = new InterpAPI { outer =>
     val colors = parameters.colors
 
-    def watch(p: os.Path) = interp.watch(p)
+    def watch(p: java.nio.file.Path) = interp.watch(os.Path(p, wd))
     def watchValue[T](v: => T): T = { interp.watchValue(v); v }
 
     val beforeExitHooks = interp.beforeExitHooks
@@ -701,11 +701,12 @@ class Interpreter(
 
       def handleClasspath(jar: java.net.URL) = headFrame.addClasspath(Seq(jar))
 
-      def module(file: os.Path) = {
-        watch(file)
+      def module(file0: java.nio.file.Path) = {
+        val file = os.Path(file0, wd)
+        interp.watch(file)
         val (pkg, wrapper) = ammonite.util.Util.pathToPackageWrapper(
           Seq(Name("dummy")),
-          file relativeTo wd
+          (file relativeTo wd).toNIO
         )
         processModule(
           normalizeNewlines(os.read(file)),
@@ -713,7 +714,7 @@ class Interpreter(
             wrapper,
             pkg,
             Seq(Name("ammonite"), Name("$file")),
-            Some(wd / "Main.sc")
+            Some((wd / "Main.sc").toNIO)
           ),
           autoImport = true,
           extraCode = "",
