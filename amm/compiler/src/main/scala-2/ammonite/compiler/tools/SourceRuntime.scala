@@ -3,7 +3,6 @@ package ammonite.compiler.tools
 import javassist.{ByteArrayClassPath, CtClass, CtMethod}
 
 import ammonite.compiler.Highlighter
-import ammonite.runtime.tools.browse.Strings
 import ammonite.util.CodeColors
 import ammonite.util.Util.{Location, newLine}
 import scala.collection.mutable

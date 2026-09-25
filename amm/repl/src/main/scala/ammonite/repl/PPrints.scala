@@ -1,7 +1,6 @@
 package ammonite.repl
 
 import ammonite.repl.api.History
-import ammonite.runtime.tools.GrepResult
 import ammonite.util.Util
 import pprint.Renderer
 
@@ -10,7 +9,6 @@ object PPrints {
 //    case x: os.Path => PPrints.pathRepr(x)
 //    case x: os.RelPath => PPrints.relPathRepr(x)
     case t: History => pprint.Tree.Lazy(ctx => Iterator(t.mkString(Util.newLine)))
-    case t: GrepResult => pprint.Tree.Lazy(ctx => Iterator(GrepResult.grepResultRepr(t, ctx)))
     case t: scala.xml.Elem => pprint.Tree.Lazy(_ => Iterator(t.toString))
   }
 
