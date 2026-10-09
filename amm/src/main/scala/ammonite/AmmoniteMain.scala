@@ -73,7 +73,22 @@ object AmmoniteMain {
             runner.printInfo(msg)
           }
 
+          val isRepl = cliConfig.core.code.isEmpty && cliConfig.rest.value.isEmpty
+          val sessionError = Seq(
+            "--bsp-socket" -> cliConfig.repl.bspSocket.nonEmpty,
+            "--semanticdb" -> cliConfig.repl.semanticDb.value
+          ).collectFirst {
+            case (option, true) if !isRepl =>
+              s"$option is only supported when running the REPL"
+            case (option, true) if cliConfig.repl.sessionDirectory.isEmpty =>
+              s"$option requires --session-directory"
+          }
+
           (cliConfig.core.code, cliConfig.rest.value.toList) match {
+            case _ if sessionError.nonEmpty =>
+              runner.printError(sessionError.get)
+              false
+
             case (Some(code), Nil) =>
               runner.runCode(code)
 

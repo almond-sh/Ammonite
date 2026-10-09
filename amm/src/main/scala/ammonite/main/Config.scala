@@ -127,7 +127,28 @@ object Config {
         That directory is deleted by Ammonite upon exit. Use --output-directory if you'd like
         the output directory not to be erased."""
       )
-      tmpOutputDirectory: Flag
+      tmpOutputDirectory: Flag,
+      @arg(
+        name = "session-directory",
+        doc = """Write the sources and byte code of each frame of the REPL session in
+        sub-directories of this directory, frame-0, frame-1, etc. Frames get created when
+        saving or loading sessions, via 'repl.sess'. Existing frame-* sub-directories get
+        overwritten."""
+      )
+      sessionDirectory: Option[os.Path] = None,
+      @arg(
+        name = "semanticdb",
+        doc = """Generate SemanticDB files for the code of the REPL session, in the class
+        directories of each frame. Requires --session-directory."""
+      )
+      semanticDb: Flag,
+      @arg(
+        name = "bsp-socket",
+        doc = """Start a BSP server exposing the REPL session, listening on a Unix domain socket
+        created at this path. Each frame of the session is a build target. Requires
+        --session-directory, and Java 17 or later."""
+      )
+      bspSocket: Option[String] = None
   )
   implicit val replParser: ParserForClass[Repl] = ParserForClass[Repl]
 

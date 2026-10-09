@@ -9,6 +9,7 @@ import ammonite.util.Util.{newLine, normalizeNewlines}
 import ammonite.util._
 import ammonite.compiler.iface.{CodeWrapper, CompilerBuilder, Parser}
 import ammonite.interp.Interpreter
+import ammonite.repl.bsp.{ReplBspServer, ReplBspSession}
 import coursierapi.Dependency
 
 import scala.annotation.tailrec
@@ -31,11 +32,19 @@ class Repl(
     importHooks: Map[Seq[String], ImportHook],
     compilerBuilder: CompilerBuilder,
     parser: Parser,
-    initialClassLoader: ClassLoader =
+    val initialClassLoader: ClassLoader =
       classOf[ammonite.repl.api.ReplAPI].getClassLoader,
     classPathWhitelist: Set[Seq[String]],
-    warnings: Boolean
+    warnings: Boolean,
+    sessionDirectory: Option[os.Path] = None,
+    semanticDbs: Boolean = false,
+    bspSocket: Option[String] = None
 ) { repl =>
+
+  require(
+    sessionDirectory.nonEmpty || (!semanticDbs && bspSocket.isEmpty),
+    "A session directory is required to generate SemanticDB files or to start a BSP server"
+  )
 
   val prompt = Ref("@ ")
 
@@ -62,6 +71,18 @@ class Repl(
 
   val frames = Ref(List(ammonite.runtime.Frame.createInitial(initialClassLoader)))
 
+  /** Where the sources and byte code of each frame get written, if we were asked to */
+  val frameOutputs = sessionDirectory.map { dir =>
+    new FrameOutputs(
+      dir,
+      semanticDbs = semanticDbs,
+      // BSP clients want SemanticDB files to refer to the sources we report, the .sc files
+      mapSemanticDbsToSources = bspSocket.nonEmpty
+    )
+  }
+  for (outputs <- frameOutputs; frame <- frames())
+    outputs.register(frame)
+
   /**
    * The current line number of the REPL, used to make sure every snippet
    * evaluated can have a distinct name that doesn't collide.
@@ -85,13 +106,19 @@ class Repl(
     importHooks = importHooks,
     classPathWhitelist = classPathWhitelist,
     alreadyLoadedDependencies = alreadyLoadedDependencies,
-    warnings = warnings
+    warnings = warnings,
+    frameOutputs = frameOutputs
   )
   val interp = new Interpreter(
     compilerBuilder,
     () => parser,
     getFrame = () => frames().head,
-    createFrame = () => { val f = sess0.childFrame(frames().head); frames() = f :: frames(); f },
+    createFrame = () => {
+      val f = sess0.childFrame(frames().head)
+      frames() = f :: frames()
+      frameOutputs.foreach(_.register(f))
+      f
+    },
     replCodeWrapper = replCodeWrapper,
     scriptCodeWrapper = scriptCodeWrapper,
     parameters = interpParams
@@ -149,6 +176,32 @@ class Repl(
   )
 
   def initializePredef() = interp.initializePredef(basePredefs, customPredefs, bridges, baseImports)
+
+  /**
+   * Starts a BSP server exposing this session, if we were asked to
+   *
+   * The returned server should be closed once the REPL exits.
+   */
+  def startBspServer(): Option[ReplBspServer] =
+    for {
+      socket <- bspSocket
+      outputs <- frameOutputs
+    } yield {
+      if (Util.javaMajorVersion < 17)
+        throw new Exception(
+          s"The BSP server requires Java 17 or later (current Java version: ${Util.javaMajorVersion})"
+        )
+      val session = new ReplBspSession(
+        () => sess0.liveFrames,
+        outputs,
+        interp.scalaVersion,
+        interp.scalacOptions ++ interp.bspSemanticDbOptions,
+        Classpath.classpath(initialClassLoader, None)
+      )
+      val server = ReplBspServer.start(socket, session, printer.error)
+      printer.info(s"BSP server listening on ${server.socketPath}")
+      server
+    }
 
   def warmup() = {
     // An arbitrary input, randomized to make sure it doesn't get cached or

@@ -45,13 +45,22 @@ object Preprocessor {
     *
     *
     * @param code
-    * @param prefixCharLength
+    * @param prefixCharLength length of the code added by Ammonite before the user code
     * @param userCodeNestingLevel if 0, assume code isn't generated / wrapped by Ammonite
+    * @param suffixCharLength length of the code added by Ammonite after the user code
     */
   case class Output(
       code: String,
       prefixCharLength: Int,
-      userCodeNestingLevel: Int
-  )
+      userCodeNestingLevel: Int,
+      suffixCharLength: Int = 0
+  ) {
+    /** The code added by Ammonite before the user code */
+    def topWrapper: String = code.take(prefixCharLength)
+    /** The user code, as it was passed to the compiler */
+    def userCode: String = code.substring(prefixCharLength, code.length - suffixCharLength)
+    /** The code added by Ammonite after the user code */
+    def bottomWrapper: String = code.takeRight(suffixCharLength)
+  }
 
 }
