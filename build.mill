@@ -1,4 +1,4 @@
-//| mill-version: 1.1.7
+//| mill-version: 1.1.10
 //| mvnDeps:
 //| - io.get-coursier:coursier-launcher_2.13:2.1.25-M19
 package build
@@ -15,7 +15,6 @@ import mill.scalalib.*
 import mill.scalalib.publish.*
 import mill.javalib.api.JvmWorkerUtil.*
 import mill.javalib.testrunner.TestResult
-import mill.util.Tasks
 import coursier.version.Version
 
 val ghOrg = "com-lihaoyi"
@@ -35,8 +34,6 @@ val latestTaggedVersion =
     case e: os.SubprocessException =>
       "dev"
   }
-
-val gitHead = os.proc("git", "rev-parse", "HEAD").call().out.trim()
 
 val scala2_12Versions = 8.to(21)
   .map(v => s"2.12.$v")
@@ -328,51 +325,31 @@ val latestAssemblies = assemblyCrossScalaVersions.map(shell(_).assembly)
 
 println("GITHUB REF " + sys.env.get("GITHUB_REF"))
 
-def latestVersionTag(commit: Option[String] = None) =
+def versionTag(describeArgs: String*): Option[String] =
   scala.util.Try(
-    os.proc(
-      "git",
-      "describe",
-      "--abbrev=0",
-      "--tags",
-      "--match",
-      "v*",
-      commit.toSeq
-    ).call().out.trim()
+    os.proc("git", "describe", "--tags", "--match", "v*", describeArgs)
+      .call(stderr = os.Pipe)
+      .out
+      .trim()
   ).toOption
 
-val headVersionTag = scala.util.Try(
-  os.proc("git", "describe", "--exact-match", "--tags", "--match", "v*", gitHead)
-    .call()
-    .out
-    .trim()
-).toOption
-
-val ciTag =
-  if (sys.env.contains("CI"))
-    sys.env.get("GITHUB_REF").collect {
-      case ref if ref.startsWith("refs/tags/") => ref.stripPrefix("refs/tags/")
-    }
-  else None
-
-val publishVersion = {
-  val tagOpt = headVersionTag match {
-    case Some(tag) if sys.env.contains("CI") && !ciTag.contains(tag) =>
-      latestVersionTag(Some(s"$gitHead^"))
-    case _ => latestVersionTag()
-  }
-  tagOpt match {
-    case None => "3.0.10-SNAPSHOT"
-    case Some(tag) =>
-      // v3.0.10_sv2.12.8_sv3.3.8 publishes as Maven version 3.0.10
-      val version = tag.stripPrefix("v").takeWhile(_ != '_')
-      if (headVersionTag.contains(tag) && (!sys.env.contains("CI") || ciTag.contains(tag))) version
-      else {
-        val components = version.split('.').toSeq
-        (components.init :+ (components.last.toInt + 1)).mkString(".") + "-SNAPSHOT"
+/**
+ * The version of a `v*` tag on HEAD if there's one, else a snapshot of the latest `v*` tag
+ * version, trimmed to its first three components, with the last of them bumped.
+ *
+ * On CI, branch builds delete the tags on HEAD beforehand, so that they publish snapshots.
+ */
+val publishVersion =
+  versionTag("--exact-match", "HEAD") match {
+    case Some(tag) => tag.stripPrefix("v")
+    case None =>
+      versionTag("--abbrev=0") match {
+        case None => "3.0.10-SNAPSHOT"
+        case Some(tag) =>
+          val components = tag.stripPrefix("v").split('.').toSeq.take(3)
+          (components.init :+ (components.last.toInt + 1)).mkString(".") + "-SNAPSHOT"
       }
   }
-}
 
 val isUnstableBuild = publishVersion.endsWith("-SNAPSHOT")
 
@@ -553,9 +530,6 @@ trait AmmInternalModule extends CrossSbtModule {
 }
 trait AmmModule extends AmmInternalModule with SonatypeCentralPublishModule with CoursierModule {
   def publishVersion: T[String] = Task { build.publishVersion }
-  def publishData: T[mill.javalib.PublishModule.PublishData] = Task {
-    mill.javalib.PublishModule.PublishData(artifactMetadata(), publishArtifactsPayload()())
-  }
   override def docJar: T[PathRef] = Task { build.emptyDocJar() }
   def pomSettings = PomSettings(
     description = artifactName(),
@@ -1297,43 +1271,14 @@ def generateDependenciesFile(fileName: String, deps: Seq[coursier.Dependency])(i
   dir
 }
 
-/** Scala versions from `_sv*` tag parts, or `None` to publish every module. */
-def publishScalaVersionsFromTag(tag: String): Option[Seq[String]] =
-  if (!tag.contains('_')) None
-  else {
-    val versions = tag.split('_').toSeq.drop(1).collect {
-      case part if part.startsWith("sv") => part.stripPrefix("sv")
-    }
-    if (versions.isEmpty)
-      sys.error(s"Tag $tag contains '_' but no sv* Scala version parts")
-    Some(versions)
-  }
-
-def publishBundleNameFromTag(tag: String): String =
-  "ammonite-" + tag.stripPrefix("v").replace('_', '-')
-
-def publishModulesForScalaVersions(versions: Option[Seq[String]]): Seq[AmmModule] = {
-  versions.foreach { vs =>
-    // Every module is now published once per binary Scala version, so there is nothing left
-    // for a Scala-version-specific bundle to single out
-    sys.error(
-      s"No module is cross-published for full Scala versions any more - drop the " +
-        s"${vs.map("_sv" + _).mkString(", ")} part(s) of the tag and publish a single bundle"
-    )
-  }
-  moduleInternal.modules.collect { case m: AmmModule => m }
-}
-
 /**
- * Lists the artifacts a `publishMaven` for `tag` would push, and fails if two modules
- * would be published under the same artifact id.
+ * Lists the artifacts a release would push, and fails if two modules would be published under
+ * the same artifact id.
  *
  * Maven Central asks projects to keep the number of modules they publish in check, hence this.
  */
-def publishedArtifacts(tag: String = "") = {
-  val tagOpt = Option(tag).filter(_.nonEmpty)
-  val modules = publishModulesForScalaVersions(tagOpt.flatMap(publishScalaVersionsFromTag))
-  val artifactIdTasks = modules.map(_.artifactId)
+def publishedArtifacts() = {
+  val artifactIdTasks = moduleInternal.modules.collect { case m: AmmModule => m.artifactId }
   Task.Command {
     val artifactIds = Task.sequence(artifactIdTasks)()
 
@@ -1344,26 +1289,6 @@ def publishedArtifacts(tag: String = "") = {
       )
 
     artifactIds.sorted
-  }
-}
-
-def publishTag: Option[String] =
-  sys.env.get("GITHUB_REF").collect {
-    case ref if ref.startsWith("refs/tags/") => ref.stripPrefix("refs/tags/")
-  }
-
-def publishMaven(tag: String = "") = {
-  val tagOpt = Option(tag).filter(_.nonEmpty).orElse(publishTag)
-  val artifacts = Tasks(
-    publishModulesForScalaVersions(tagOpt.flatMap(publishScalaVersionsFromTag))
-      .map(_.publishData)
-  )
-  val bundleName = tagOpt.fold("")(publishBundleNameFromTag)
-  Task.Command {
-    mill.javalib.SonatypeCentralPublishModule.publishAll(
-      publishArtifacts = artifacts,
-      bundleName = bundleName
-    )()
   }
 }
 

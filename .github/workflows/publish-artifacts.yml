@@ -8,21 +8,22 @@ on:
       - 'v*'
   workflow_dispatch:
 
-# never publish two bundles at once for the same ref
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   publish-maven:
 
     if: github.repository == 'almond-sh/Ammonite'
     runs-on: ubuntu-latest
+    # Never publish to Sonatype Central from two jobs at a time (snapshots of successive pushes,
+    # or a snapshot and a release). A job waits for the running one rather than cancelling it.
+    # GitHub keeps only one waiting job per group though, and cancels an older waiting one.
+    concurrency:
+      group: sonatype-central-publish-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
     env:
-      MILL_SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-      MILL_SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-      MILL_PGP_SECRET_BASE64: ${{ secrets.PUBLISH_SECRET_KEY }}
-      MILL_PGP_PASSPHRASE: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
+      PUBLISH_ARTIFACTS: "__:PublishModule.publishArtifacts"
       LANG: "en_US.UTF-8"
       LC_MESSAGES: "en_US.UTF-8"
       LC_ALL: "en_US.UTF-8"
@@ -32,4 +33,32 @@ jobs:
         with:
           fetch-depth: 0
       - name: Publish to Maven Central
-        run: ./mill -i publishMaven
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            # --shouldRelease false: the bundle is uploaded and validated on Sonatype Central, but has
+            # to be published manually from https://central.sonatype.com/publishing/deployments
+            ./mill -i mill.scalalib.SonatypeCentralPublishModule/ --bundleName "ammonite-${GITHUB_REF#refs/tags/v}" --shouldRelease false
+          else
+            # publish snapshots, even if HEAD happens to be tagged
+            for tag in $(git tag --points-at HEAD); do
+              git tag -d "$tag"
+            done
+            ./mill -i mill.scalalib.SonatypeCentralPublishModule/
+          fi
+        env:
+          MILL_SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          MILL_SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          MILL_PGP_SECRET_BASE64: ${{ secrets.PUBLISH_SECRET_KEY }}
+          MILL_PGP_PASSPHRASE: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
+      # Same artifacts, snapshots included, to the GitHub Packages of the repository.
+      # Best effort: Sonatype Central is the source of truth.
+      - name: Publish to GitHub Packages
+        continue-on-error: true
+        run: |
+          ./mill -i mill.javalib.MavenPublishModule/publishAll \
+            --publishArtifacts "$PUBLISH_ARTIFACTS" \
+            --releaseUri "https://maven.pkg.github.com/$GITHUB_REPOSITORY" \
+            --snapshotUri "https://maven.pkg.github.com/$GITHUB_REPOSITORY"
+        env:
+          MILL_MAVEN_USERNAME: ${{ github.actor }}
+          MILL_MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
