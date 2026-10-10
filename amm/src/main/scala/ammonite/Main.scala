@@ -14,6 +14,7 @@ import ammonite.util.Util.newLine
 import ammonite.util._
 
 import scala.annotation.tailrec
+import scala.util.control.NonFatal
 import ammonite.runtime.ImportHook
 import coursierapi.Dependency
 import scala.concurrent.Await
@@ -59,6 +60,14 @@ import acyclic.skipped
  * @param errorStream Error output when things go bad, typically System.err; also
  *                    gets sent miscellaneous info messages that aren't strictly
  *                    part of the REPL or script's output
+ * @param sessionDirectory Where the sources and byte code of each frame of the REPL
+ *                         session get written, if needed
+ * @param semanticDbs Whether to generate SemanticDB files for the code compiled in the
+ *                    REPL session, in the class directories of `sessionDirectory`. Requires
+ *                    `sessionDirectory`.
+ * @param bspSocket If non-empty, the REPL starts a BSP server exposing its session,
+ *                  listening on a Unix domain socket at this path. Requires
+ *                  `sessionDirectory`, and Java 17 or later.
  */
 case class Main(
     predefCode: String = "",
@@ -83,8 +92,16 @@ case class Main(
     // by-name, so that fastparse isn't loaded when we don't need it
     parser: () => Parser = () => CompilerBuilderFactory.load().parser,
     classPathWhitelist: Set[Seq[String]] = Set.empty,
-    warnings: Boolean = false
+    warnings: Boolean = false,
+    sessionDirectory: Option[os.Path] = None,
+    semanticDbs: Boolean = false,
+    bspSocket: Option[String] = None
 ) {
+
+  require(
+    sessionDirectory.nonEmpty || (!semanticDbs && bspSocket.isEmpty),
+    "A session directory is required to generate SemanticDB files or to start a BSP server"
+  )
 
   def loadedPredefFile = predefFile match {
     case Some(path) =>
@@ -151,7 +168,10 @@ case class Main(
         parser = parser(),
         initialClassLoader = initialClassLoader,
         classPathWhitelist = classPathWhitelist,
-        warnings = warnings
+        warnings = warnings,
+        sessionDirectory = sessionDirectory,
+        semanticDbs = semanticDbs,
+        bspSocket = bspSocket
       )
     }
 
@@ -233,19 +253,30 @@ case class Main(
           case Some(value) =>
             value
           case None =>
-            // Warm up the compilation logic in the background, hopefully while the
-            // user is typing their first command, so by the time the command is
-            // submitted it can be processed by a warm compiler
-            val warmupThread = new Thread(new Runnable {
-              def run() = repl.warmup()
-            })
-            // This thread will terminal eventually on its own, but if the
-            // JVM wants to exit earlier this thread shouldn't stop it
-            warmupThread.setDaemon(true)
-            warmupThread.start()
+            val bspServerOrError =
+              try Right(repl.startBspServer())
+              catch {
+                case NonFatal(e) => Left(Res.Failure(s"Error starting BSP server: $e"))
+              }
+            bspServerOrError match {
+              case Left(failure) => (failure, Nil)
+              case Right(bspServer) =>
+                try {
+                  // Warm up the compilation logic in the background, hopefully while the
+                  // user is typing their first command, so by the time the command is
+                  // submitted it can be processed by a warm compiler
+                  val warmupThread = new Thread(new Runnable {
+                    def run() = repl.warmup()
+                  })
+                  // This thread will terminal eventually on its own, but if the
+                  // JVM wants to exit earlier this thread shouldn't stop it
+                  warmupThread.setDaemon(true)
+                  warmupThread.start()
 
-            val exitValue = Res.Success(repl.run())
-            (exitValue.map(repl.beforeExit), repl.interp.watchedValues.toSeq)
+                  val exitValue = Res.Success(repl.run())
+                  (exitValue.map(repl.beforeExit), repl.interp.watchedValues.toSeq)
+                } finally bspServer.foreach(_.close())
+            }
         }
     }
   }

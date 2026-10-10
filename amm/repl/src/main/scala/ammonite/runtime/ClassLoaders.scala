@@ -16,12 +16,18 @@ import scala.collection.mutable
  * Exposes `imports` and `classpath` as readable but only writable
  * in particular ways: `imports` can only be updated via `mergeImports`,
  * while `classpath` can only be added to.
+ *
+ * @param id identifies this frame among the frames of a session
+ * @param parent the frame this one was created from, whose class loader is the parent of ours
  */
 class Frame(
+    val id: Int,
+    val parent: Option[Frame],
     val classloader: SpecialClassLoader,
     val pluginClassloader: SpecialClassLoader,
     private[this] var imports0: Imports,
     private[this] var classpath0: Seq[java.net.URL],
+    private[this] var pluginClasspath0: Seq[java.net.URL],
     private[this] var usedEarlierDefinitions0: Seq[String],
     private[this] var hooks0: Seq[ammonite.util.Frame.Hook]
 ) extends ammonite.util.Frame {
@@ -39,6 +45,8 @@ class Frame(
   def version = version0
   def imports = imports0
   def classpath: Seq[java.net.URL] = classpath0
+  /** Compiler plugin JARs added to this frame or its parents */
+  def pluginClasspath: Seq[java.net.URL] = pluginClasspath0
   def usedEarlierDefinitions = usedEarlierDefinitions0
   def addImports(additional: Imports) = {
     if (!frozen0)
@@ -55,12 +63,15 @@ class Frame(
         .toVector
       classpath0 = classpath0 ++ additional
       hooks.foreach(_.addClasspath(actualAdditional))
+      changeListeners.foreach(_())
     }
   }
   def addPluginClasspath(additional: Seq[java.net.URL]) = {
     if (!frozen0) {
       version0 += 1
       additional.foreach(pluginClassloader.add)
+      pluginClasspath0 = pluginClasspath0 ++ additional.filterNot(pluginClasspath0.contains)
+      changeListeners.foreach(_())
     }
   }
   def usedEarlierDefinitions_=(usedEarlierDefinitions: Seq[String]): Unit =
@@ -69,6 +80,15 @@ class Frame(
   def addHook(hook: ammonite.util.Frame.Hook): Unit = {
     hooks0 = hooks0 :+ hook
   }
+
+  // Unlike hooks, these aren't passed on to child frames
+  @volatile private[this] var changeListeners = List.empty[() => Unit]
+
+  /** Adds a listener, called every time JARs or compiler plugins are added to this frame */
+  def addChangeListener(listener: () => Unit): Unit =
+    synchronized {
+      changeListeners = changeListeners :+ listener
+    }
 }
 object Frame {
   def createInitial(baseClassLoader: ClassLoader = Thread.currentThread().getContextClassLoader) = {
@@ -86,7 +106,7 @@ object Frame {
       likelyJdkSourceLocation.wrapped.toUri.toURL
     )
 
-    new Frame(special, special, Imports(), Seq(), Seq(), Seq())
+    new Frame(0, None, special, special, Imports(), Seq(), Seq(), Seq(), Seq())
   }
 }
 

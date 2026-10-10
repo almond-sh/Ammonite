@@ -373,6 +373,9 @@ object Deps {
     mvn"com.lihaoyi:::acyclic:$ver"
   }
   val bcprovJdk15on = mvn"org.bouncycastle:bcprov-jdk18on:1.82"
+  // brings bsp4j, along with the Scala CLI BSP extensions (buildTarget/wrappedSources)
+  // requires Java 17, like the BSP server of the REPL
+  val scalaCliBsp = mvn"org.virtuslab.scala-cli:scala-cli-bsp:1.18.0"
   val cask = mvn"com.lihaoyi::cask:0.10.2"
   val classPathUtil = mvn"io.get-coursier::class-path-util:0.1.4"
   val coursierInterface = mvn"io.get-coursier:interface:1.0.28"
@@ -805,7 +808,8 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
       Deps.mainargs,
       Deps.coursierDependencyInterface,
       // from the former amm.interp
-      Deps.fastparse
+      Deps.fastparse,
+      Deps.scalaCliBsp
     ) ++ {
       if (isScala3(crossScalaVersion))
         Seq(

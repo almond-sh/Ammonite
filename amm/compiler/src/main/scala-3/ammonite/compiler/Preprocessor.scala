@@ -61,12 +61,18 @@ class Preprocessor(
 
     expandStatements(stmts, resultIndex, skipEmpty).map {
       case Expanded(code, printer) =>
+        val userCode = leadingSpaces + code
         val (wrappedCode, importsLength, userCodeNestingLevel) = wrapCode(
-          codeSource, indexedWrapper, leadingSpaces + code,
+          codeSource, indexedWrapper, userCode,
           printerTemplate(printer.mkString(", ")),
           imports, extraCode, markScript, codeWrapper
         )
-        IPreprocessor.Output(wrappedCode, importsLength, userCodeNestingLevel)
+        IPreprocessor.Output(
+          wrappedCode,
+          importsLength,
+          userCodeNestingLevel,
+          wrappedCode.length - importsLength - userCode.length
+        )
     }
   }
 

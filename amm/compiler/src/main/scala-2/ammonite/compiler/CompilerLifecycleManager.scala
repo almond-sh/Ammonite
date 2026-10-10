@@ -50,6 +50,15 @@ class CompilerLifecycleManager(
 
   import Internal._
 
+  /*
+   * The semanticdb-scalac plugin matches tree positions against the source it's passed. The
+   * line number modifier of AmmonitePlugin shifts those positions, so that they're relative to
+   * the user code, which breaks that. So we don't shift positions when generating SemanticDBs,
+   * at the cost of line numbers in error messages and stack traces being those of the code
+   * actually compiled, wrapper included.
+   */
+  private def generatesSemanticDbs = initialSettings.exists(_.startsWith("-P:semanticdb:"))
+
   // Public to expose it in the REPL so people can poke at it at runtime
   // Not for use within Ammonite! Use one of the other methods to ensure
   // that `Internal.compiler` is properly initialized before use.
@@ -106,7 +115,8 @@ class CompilerLifecycleManager(
         None,
         settings,
         classPathWhitelist,
-        initialClassPath
+        initialClassPath,
+        lineNumberModifier = !generatesSemanticDbs
       )
 
       onCompilerInit.foreach(_(compiler.compiler))

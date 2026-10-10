@@ -15,7 +15,25 @@ class SessionApiImpl(frames0: => StableRef[List[Frame]]) extends Session {
   def frames: List[Frame] = frames0()
   val namedFrames = mutable.Map.empty[String, List[Frame]]
 
+  /**
+   * The frames still reachable from this session: the current frame, the ones saved
+   * under a name, and their parents
+   */
+  def liveFrames: Seq[Frame] =
+    (frames +: namedFrames.values.toVector)
+      .flatten
+      .distinct
+      .sortBy(_.id)
+
+  private var lastFrameId = 0
+  private def nextFrameId(): Int = synchronized {
+    lastFrameId = math.max(lastFrameId, frames.map(_.id).max) + 1
+    lastFrameId
+  }
+
   def childFrame(parent: Frame) = new Frame(
+    nextFrameId(),
+    Some(parent),
     new SpecialClassLoader(
       parent.classloader,
       parent.classloader.classpathSignature,
@@ -28,6 +46,7 @@ class SessionApiImpl(frames0: => StableRef[List[Frame]]) extends Session {
     ),
     parent.imports,
     parent.classpath,
+    parent.pluginClasspath,
     parent.usedEarlierDefinitions,
     parent.hooks
   )
