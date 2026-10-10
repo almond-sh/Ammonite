@@ -24,7 +24,6 @@ import scala.collection.mutable
  * than necessary
  */
 class CompilerLifecycleManager(
-    rtCacheDir: Option[Path],
     headFrame: => ammonite.util.Frame,
     dependencyCompleteOpt: => Option[String => (Int, Seq[String])],
     classPathWhitelist: Set[Seq[String]],
@@ -83,9 +82,9 @@ class CompilerLifecycleManager(
       lastFrame = headFrame
       lastFrameVersion = headFrame.version
 
-      val initialClassPath = Classpath.classpath(initialClassLoader, rtCacheDir)
+      val initialClassPath = Classpath.classpath(initialClassLoader)
       val headFrameClassPath =
-        Classpath.classpath(headFrame.classloader, rtCacheDir)
+        Classpath.classpath(headFrame.classloader)
 
       Internal.compiler = new Compiler(
         Internal.dynamicClasspath,

@@ -3,7 +3,7 @@ package ammonite.interp.script
 import ammonite.compiler.iface.{CodeWrapper, Compiler, CompilerBuilder}
 import ammonite.compiler.iface.Compiler.{Output => CompilerOutput}
 import ammonite.interp.Interpreter
-import ammonite.runtime.{Frame, Storage}
+import ammonite.runtime.Frame
 import ammonite.util.{Classpath, Imports, Name, Position, PositionOffsetConversion, Printer, Res}
 
 import scala.collection.mutable
@@ -17,7 +17,6 @@ import scala.collection.mutable
 class SingleScriptCompiler(
     compilerBuilder: CompilerBuilder,
     initialClassLoader: ClassLoader,
-    storage: Storage,
     printer: Printer,
     initialImports: Imports,
     classPathWhitelist: Set[Seq[String]],
@@ -58,14 +57,8 @@ class SingleScriptCompiler(
         newMessages.append((msg.severity, msg.start, msg.end, msg.message))
     }
 
-    val initialClassPath = Classpath.classpath(
-      initialClassLoader,
-      storage.dirOpt.map(_.toNIO)
-    )
-    val classPath = Classpath.classpath(
-      frame.classloader,
-      storage.dirOpt.map(_.toNIO)
-    )
+    val initialClassPath = Classpath.classpath(initialClassLoader)
+    val classPath = Classpath.classpath(frame.classloader)
 
     compilerBuilder.create(
       initialClassPath,

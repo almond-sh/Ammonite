@@ -180,6 +180,18 @@ val compilerInternalDirs: Seq[CompilerInternalDir] = {
       Seq("ClassPathMaker"),
       sv => (is2_12(sv) && patchOf(sv, "2.12.") >= 10) || is2_13(sv)
     ),
+    // JrtClassPathMaker: JrtClassPath takes a flag telling whether to close its file system
+    // since 2.13.15
+    CompilerInternalDir(
+      "scala-2.12.0-2.13.14",
+      Seq("JrtClassPathMaker"),
+      sv => is2_12(sv) || (is2_13(sv) && patchOf(sv, "2.13.") <= 14)
+    ),
+    CompilerInternalDir(
+      "scala-2.13.15+",
+      Seq("JrtClassPathMaker"),
+      sv => is2_13(sv) && patchOf(sv, "2.13.") >= 15
+    ),
     // CompilationUnitMaker: CompilationUnit takes an extra parameter since 3.4.2
     CompilerInternalDir(
       "scala-3.0.0-3.4.1",

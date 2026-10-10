@@ -58,7 +58,7 @@ class Compiler(
 ) extends ICompiler:
   self =>
 
-  import Compiler.{enumerateVdFiles, files}
+  import Compiler.{enumerateVdFiles, files, jrtClassPath}
 
   private val outputDir = new VirtualDirectory("(memory)")
 
@@ -72,7 +72,9 @@ class Compiler(
               if (classPath0 == null)
                 classPath0 = classpath.AggregateClassPath(Seq(
                   asDottyClassPath(initialClassPath, whiteListed = true),
-                  asDottyClassPath(self.classPath),
+                  // Like everything in initialClassPath, which classPath lists too, the JDK
+                  // classes aren't white-listed
+                  asDottyClassPath(self.classPath, jrtClassPath),
                   classpath.ClassPathFactory.newClassPath(dynamicClassPath)
                 ))
               classPath0
@@ -110,6 +112,7 @@ class Compiler(
 
   private def asDottyClassPath(
     cp: Seq[URL],
+    extra: Seq[ClassPath] = Nil,
     whiteListed: Boolean = false
   )(using Context): ClassPath =
     val (dirs, jars) = cp.partition { url =>
@@ -121,8 +124,9 @@ class Compiler(
       .filter(ammonite.util.Classpath.canBeOpenedAsJar)
       .map(u => classpath.ZipAndJarClassPathFactory.create(AbstractFile.getURL(u)))
 
-    if (whiteListed) new dotty.ammonite.compiler.WhiteListClasspath(dirsCp ++ jarsCp, whiteList)
-    else classpath.AggregateClassPath(dirsCp ++ jarsCp)
+    if (whiteListed)
+      new dotty.ammonite.compiler.WhiteListClasspath(dirsCp ++ jarsCp ++ extra, whiteList)
+    else classpath.AggregateClassPath(dirsCp ++ jarsCp ++ extra)
 
   // Originally adapted from
   // https://github.com/lampepfl/dotty/blob/3.0.0-M3/
@@ -458,6 +462,10 @@ class Compiler(
   }
 
 object Compiler:
+
+  /** The JDK classes, read from the modules of the JVM we run on (Java >= 9 only) */
+  private lazy val jrtClassPath: Seq[ClassPath] =
+    ammonite.util.Classpath.jrtFileSystem.map(new classpath.JrtClassPath(_)).toSeq
 
   /** Create empty outer store reporter */
   def newStoreReporter(): reporting.StoreReporter =

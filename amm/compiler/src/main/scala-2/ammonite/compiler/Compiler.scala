@@ -368,6 +368,12 @@ object Compiler {
     }
   }
 
+  /** The JDK classes, read from the modules of the JVM we run on (Java >= 9 only) */
+  private lazy val jrtClassPath =
+    Classpath.jrtFileSystem
+      .map(CompilerInternals.jrtClassPathMaker.jrtClassPath)
+      .toSeq
+
   /**
    * Code to initialize random bits and pieces that are needed
    * for the Scala compiler to function, common between the
@@ -419,7 +425,7 @@ object Compiler {
     }
 
     val staticCP = CompilerInternals.classPathMaker.whiteListClassPath(
-      initialJarCp ++ initialDirCp,
+      initialJarCp ++ initialDirCp ++ jrtClassPath,
       classPathWhitelist
     )
     val jcp = new AggregateClassPath(Seq(staticCP, dynamicCP) ++ newJarCp ++ newDirCp)

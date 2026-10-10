@@ -1,11 +1,9 @@
 package ammonite.util
 
 import java.io.File
-import java.net.URL
-import java.nio.file.{Path, Paths}
+import java.net.{URI, URL}
+import java.nio.file.{FileSystem, FileSystems}
 import java.util.zip.{ZipFile, ZipInputStream}
-
-import io.github.retronym.java9rtexport.Export
 
 import scala.util.control.NonFatal
 
@@ -21,20 +19,21 @@ object Classpath {
       .exists(_.toLowerCase == "true")
 
   /**
+   * The modules of the JDK we run on, which the compilers have to read the JDK classes from
+   * on top of [[classpath]] - empty on Java 8, whose JDK classes [[classpath]] already lists.
+   */
+  lazy val jrtFileSystem: Option[FileSystem] =
+    if (System.getProperty("sun.boot.class.path") == null)
+      Some(FileSystems.getFileSystem(URI.create("jrt:/")))
+    else
+      None
+
+  /**
    * In memory cache of all the jars used in the compiler. This takes up some
    * memory but is better than reaching all over the filesystem every time we
    * want to do something.
    */
-  def classpath(
-      classLoader: ClassLoader,
-      rtCacheDir: Option[Path]
-  ): Vector[URL] = {
-    lazy val actualRTCacheDir = rtCacheDir.filter { dir =>
-      // no need to cache if the storage is in tmpdir
-      // because it is temporary
-      !dir.startsWith(Paths.get(System.getProperty("java.io.tmpdir")))
-    }
-
+  def classpath(classLoader: ClassLoader): Vector[URL] = {
     var current = classLoader
     val files = collection.mutable.Buffer.empty[java.net.URL]
     val seenClassLoaders = collection.mutable.Buffer.empty[ClassLoader]
@@ -57,26 +56,14 @@ object Classpath {
           .filter(_.exists())
           .map(_.toURI.toURL)
       )
-    } else {
-      if (seenClassLoaders.contains(ClassLoader.getSystemClassLoader)) {
-        for (
-          p <- System.getProperty("java.class.path")
-            .split(File.pathSeparatorChar) if !p.endsWith("sbt-launch.jar")
-        ) {
-          val f = new File(p)
-          if (f.exists())
-            files.append(f.toURI.toURL)
-        }
-        try {
-          new java.net.URLClassLoader(files.map(_.toURI.toURL).toArray, null)
-            .loadClass("javax.script.ScriptEngineManager")
-        } catch {
-          case _: ClassNotFoundException =>
-            actualRTCacheDir match {
-              case Some(path) => files.append(Export.rtAt(path.toFile).toURI.toURL)
-              case _ => files.append(Export.rt().toURI.toURL)
-            }
-        }
+    } else if (seenClassLoaders.contains(ClassLoader.getSystemClassLoader)) {
+      for (
+        p <- System.getProperty("java.class.path")
+          .split(File.pathSeparatorChar) if !p.endsWith("sbt-launch.jar")
+      ) {
+        val f = new File(p)
+        if (f.exists())
+          files.append(f.toURI.toURL)
       }
     }
     files.toVector

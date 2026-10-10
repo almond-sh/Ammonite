@@ -57,7 +57,6 @@ class Interpreter(
     IvyThing.completer(repositories(), verbose = verboseOutput)
 
   val compilerManager = compilerBuilder.newManager(
-    storage.dirOpt.map(_.toNIO),
     headFrame,
     Some(dependencyComplete),
     classPathWhitelist,
