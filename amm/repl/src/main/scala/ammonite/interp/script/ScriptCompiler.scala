@@ -3,7 +3,6 @@ package ammonite.interp.script
 import java.util.concurrent.ConcurrentHashMap
 
 import ammonite.compiler.iface.{CodeWrapper, Compiler => AmmCompiler, CompilerBuilder}
-import ammonite.runtime.Storage
 import ammonite.util.{Imports, Printer}
 
 import scala.collection.JavaConverters._
@@ -11,7 +10,6 @@ import scala.collection.mutable
 
 final class ScriptCompiler(
     compilerBuilder: CompilerBuilder,
-    storage: Storage,
     printer: Printer, // TODO Remove this
     codeWrapper: CodeWrapper,
     initialClassLoader: ClassLoader,
@@ -107,7 +105,6 @@ final class ScriptCompiler(
     val compiler = new SingleScriptCompiler(
       compilerBuilder,
       initialClassLoader,
-      storage,
       printer,
       initialImports,
       classPathWhitelist,
@@ -194,7 +191,6 @@ final class ScriptCompiler(
     val compiler = new SingleScriptCompiler(
       compilerBuilder,
       initialClassLoader,
-      storage,
       printer,
       initialImports,
       classPathWhitelist,

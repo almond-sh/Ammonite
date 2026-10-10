@@ -26,7 +26,6 @@ import scala.tools.nsc.Settings
  * than necessary
  */
 class CompilerLifecycleManager(
-    rtCacheDir: Option[Path],
     headFrame: => ammonite.util.Frame,
     dependencyCompleteOpt: => Option[String => (Int, Seq[String])],
     classPathWhitelist: Set[Seq[String]],
@@ -101,9 +100,9 @@ class CompilerLifecycleManager(
         System.err.println(s"Error processing initial settings ${initialSettings.mkString(" ")}")
       onSettingsInit.foreach(_(settings))
 
-      val initialClassPath = Classpath.classpath(initialClassLoader, rtCacheDir)
+      val initialClassPath = Classpath.classpath(initialClassLoader)
       val headFrameClassPath =
-        Classpath.classpath(headFrame.classloader, rtCacheDir)
+        Classpath.classpath(headFrame.classloader)
 
       Internal.compiler = Compiler(
         headFrameClassPath,

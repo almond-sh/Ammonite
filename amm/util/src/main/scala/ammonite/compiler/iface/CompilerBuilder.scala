@@ -1,14 +1,12 @@
 package ammonite.compiler.iface
 
 import java.net.URL
-import java.nio.file.Path
 
 import ammonite.util.Frame
 
 abstract class CompilerBuilder {
 
   def newManager(
-      rtCacheDir: Option[Path],
       headFrame: => Frame,
       dependencyCompleter: => Option[String => (Int, Seq[String])],
       whiteList: Set[Seq[String]],

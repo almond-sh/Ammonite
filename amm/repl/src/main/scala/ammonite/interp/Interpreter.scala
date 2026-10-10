@@ -96,7 +96,6 @@ class Interpreter(
     }
 
   val compilerManager = compilerBuilder.newManager(
-    storage.dirOpt.map(_.toNIO),
     headFrame,
     Some(dependencyComplete),
     classPathWhitelist,

@@ -43,7 +43,6 @@ case class CompilerBuilder(
   def scalaVersion = CompilerBuilder.scalaVersion
 
   def newManager(
-    rtCacheDir: Option[Path],
     headFrame: => Frame,
     dependencyCompleter: => Option[String => (Int, Seq[String])],
     whiteList: Set[Seq[String]],
@@ -51,7 +50,6 @@ case class CompilerBuilder(
     settings: Seq[String]
   ): ICompilerLifecycleManager =
     new CompilerLifecycleManager(
-      rtCacheDir,
       headFrame,
       dependencyCompleter,
       whiteList,
