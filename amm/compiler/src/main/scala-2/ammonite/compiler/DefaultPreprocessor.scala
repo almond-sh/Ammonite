@@ -48,7 +48,12 @@ class DefaultPreprocessor(
         extraCode,
         markScript
       )
-    } yield Preprocessor.Output(wrappedCode, importsLength, userCodeNestingLevel)
+    } yield Preprocessor.Output(
+      wrappedCode,
+      importsLength,
+      userCodeNestingLevel,
+      wrappedCode.length - importsLength - (leadingSpaces + code).length
+    )
   }
 
   def Processor(cond: PartialFunction[(String, String, G#Tree), Expanded]) = {

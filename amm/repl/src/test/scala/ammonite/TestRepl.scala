@@ -8,7 +8,7 @@ import ammonite.interp.Interpreter
 import ammonite.main.Defaults
 import ammonite.repl._
 import ammonite.repl.api.{FrontEnd, History, ReplLoad}
-import ammonite.runtime.{Frame, Storage}
+import ammonite.runtime.{Frame, FrameOutputs, Storage}
 import ammonite.util.Util.normalizeNewlines
 import ammonite.util._
 import pprint.{TPrint, TPrintColors}
@@ -22,7 +22,12 @@ import ammonite.runtime.ImportHook
  * A test REPL which does not read from stdin or stdout files, but instead lets
  * you feed in lines or sessions programmatically and have it execute them.
  */
-class TestRepl(compilerBuilder: ICompilerBuilder = CompilerBuilder()) { self =>
+class TestRepl(
+    compilerBuilder: ICompilerBuilder = CompilerBuilder(),
+    sessionDirectory: Option[os.Path] = None,
+    semanticDbs: Boolean = false,
+    mapSemanticDbsToSources: Boolean = false
+) { self =>
   def scala2 = compilerBuilder.scalaVersion.startsWith("2.")
   def scalaVersion = compilerBuilder.scalaVersion
 
@@ -61,6 +66,10 @@ class TestRepl(compilerBuilder: ICompilerBuilder = CompilerBuilder()) { self =>
   val initialClassLoader = Thread.currentThread().getContextClassLoader
   val frames = Ref(List(Frame.createInitial(initialClassLoader)))
   val sess0 = new SessionApiImpl(frames)
+  val frameOutputs =
+    sessionDirectory.map(new FrameOutputs(_, semanticDbs, mapSemanticDbsToSources))
+  for (outputs <- frameOutputs; frame <- frames())
+    outputs.register(frame)
 
   val baseImports = ammonite.main.Defaults.replImports ++ Interpreter.predefImports
   val basePredefs = Seq(
@@ -82,7 +91,8 @@ class TestRepl(compilerBuilder: ICompilerBuilder = CompilerBuilder()) { self =>
     classPathWhitelist = ammonite.repl.Repl.getClassPathWhitelist(thin = true),
     wrapperNamePrefix = wrapperNamePrefix.getOrElse(Interpreter.Parameters().wrapperNamePrefix),
     warnings = warnings,
-    pkgName = pkgName.getOrElse(Interpreter.Parameters().pkgName)
+    pkgName = pkgName.getOrElse(Interpreter.Parameters().pkgName),
+    frameOutputs = frameOutputs
   )
   val interp =
     try {
@@ -90,8 +100,12 @@ class TestRepl(compilerBuilder: ICompilerBuilder = CompilerBuilder()) { self =>
         compilerBuilder,
         () => parser,
         getFrame = () => frames().head,
-        createFrame =
-          () => { val f = sess0.childFrame(frames().head); frames() = f :: frames(); f },
+        createFrame = () => {
+          val f = sess0.childFrame(frames().head)
+          frames() = f :: frames()
+          frameOutputs.foreach(_.register(f))
+          f
+        },
         replCodeWrapper = codeWrapper,
         scriptCodeWrapper = codeWrapper,
         parameters = interpParams

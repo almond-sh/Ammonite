@@ -158,7 +158,10 @@ class MainRunner(
             else None
           }
       ),
-      warnings = !cliConfig.core.noWarnings.value
+      warnings = !cliConfig.core.noWarnings.value,
+      sessionDirectory = cliConfig.repl.sessionDirectory,
+      semanticDbs = cliConfig.repl.semanticDb.value,
+      bspSocket = cliConfig.repl.bspSocket
     )
   }
 

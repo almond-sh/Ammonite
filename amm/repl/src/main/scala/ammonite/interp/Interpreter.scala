@@ -5,6 +5,7 @@ import java.util.regex.Pattern
 
 import ammonite.compiler.iface.{
   CodeWrapper,
+  Compiler,
   CompilerBuilder,
   CompilerLifecycleManager,
   Parser,
@@ -56,13 +57,51 @@ class Interpreter(
   def dependencyComplete: String => (Int, Seq[String]) =
     IvyThing.completer(repositories(), verbose = verboseOutput)
 
+  /**
+   * The options we pass to the compiler, other than class path related and SemanticDB ones
+   */
+  def scalacOptions: Seq[String] =
+    if (warnings) Seq("-deprecation", "-feature") else Seq("-nowarn")
+
+  private def isScala2 = scalaVersion.startsWith("2.")
+
+  /** The compiler options generating SemanticDB files, if we were asked to */
+  def semanticDbOptions: Seq[String] =
+    semanticDbOptions(withTargetRoot = true)
+
+  /**
+   * The compiler options generating SemanticDB files, as BSP clients should see them
+   *
+   * The compiler writes SemanticDB files in a temporary directory, but these end up in the
+   * class directories, where BSP clients look for them by default.
+   */
+  def bspSemanticDbOptions: Seq[String] =
+    semanticDbOptions(withTargetRoot = false)
+
+  private def semanticDbOptions(withTargetRoot: Boolean): Seq[String] =
+    frameOutputs.filter(_.semanticDbs).toSeq.flatMap { outputs =>
+      val sourceRoot = outputs.directory.toString
+      val targetRoot = outputs.semanticDbTargetDirectory.toString
+      if (isScala2)
+        Seq(
+          "-Yrangepos",
+          "-P:semanticdb:failures:warning",
+          "-P:semanticdb:synthetics:on",
+          s"-P:semanticdb:sourceroot:$sourceRoot"
+        ) ++
+          (if (withTargetRoot) Seq(s"-P:semanticdb:targetroot:$targetRoot") else Nil)
+      else
+        Seq("-Xsemanticdb", "-sourceroot", sourceRoot) ++
+          (if (withTargetRoot) Seq("-semanticdb-target", targetRoot) else Nil)
+    }
+
   val compilerManager = compilerBuilder.newManager(
     storage.dirOpt.map(_.toNIO),
     headFrame,
     Some(dependencyComplete),
     classPathWhitelist,
     Option(initialClassLoader).getOrElse(headFrame.classloader),
-    if (warnings) Seq("-deprecation", "-feature") else Seq("-nowarn")
+    scalacOptions ++ semanticDbOptions
   )
 
   val eval = Evaluator(headFrame)
@@ -91,6 +130,23 @@ class Interpreter(
     alreadyLoadedDependencies,
     verboseOutput
   )
+
+  // Unlike the Scala 3 one, the Scala 2 compiler relies on a plugin to generate SemanticDB
+  // files, that is published for each Scala version (check frameOutputs first: getting the
+  // Scala version initializes some compiler classes, that cached scripts shouldn't load)
+  if (frameOutputs.exists(_.semanticDbs) && isScala2) {
+    val dep = Dependency.of(
+      "org.scalameta",
+      s"semanticdb-scalac_$scalaVersion",
+      "latest.release"
+    )
+    loadIvy(dep) match {
+      case Left(err) =>
+        throw new Exception(s"Error fetching the SemanticDB compiler plugin: $err")
+      case Right(files) =>
+        headFrame.addPluginClasspath(files.map(_.toURI.toURL))
+    }
+  }
 
   // Use a var and callbacks instead of a fold, because when running
   // `processModule0` user code may end up calling `processModule` which depends
@@ -284,10 +340,12 @@ class Interpreter(
     for {
       _ <- Catching { case e: ThreadDeath => Evaluator.interrupted(e) }
       output <- Res(
-        compilerManager.compileClass(
+        compileClass(
           processed,
-          printer,
-          fileName
+          fileName,
+          os.sub / (parameters.pkgName :+ indexedWrapperName).map(_.encoded),
+          // the silent lines are only used to warm up the compiler, users don't care about those
+          keepOutputs = !silent
         ),
         "Compilation Failed"
       )
@@ -306,6 +364,38 @@ class Interpreter(
     } yield (res, Tag("", "", classPathWhitelist.hashCode().toString))
   }
 
+  /**
+   * Compiles code, writing it on disk along with the compiler output, in the directories of
+   * the current frame, if we were asked to
+   *
+   * @param path where the code should be written, relative to the source directories of
+   *             the current frame, and without extension
+   * @param keepOutputs whether the code and the compiler output should be kept on disk
+   */
+  private def compileClass(
+      processed: Preprocessor.Output,
+      fileName: String,
+      path: os.SubPath,
+      keepOutputs: Boolean = true
+  ): Option[Compiler.Output] =
+    frameOutputs match {
+      case None =>
+        compilerManager.compileClass(processed, printer, fileName)
+      case Some(outputs) =>
+        val pending = outputs.prepare(headFrame, path, processed)
+        val res = compilerManager.compileClass(
+          processed,
+          printer,
+          // When generating SemanticDBs, the compiler reads sources from disk
+          if (outputs.semanticDbs) outputs.compilerFileName(pending) else fileName
+        )
+        res match {
+          case Some(output) if keepOutputs => outputs.commit(pending, output.classFiles)
+          case _ => outputs.discard(pending)
+        }
+        res
+    }
+
   def processRawSource(
     code: String,
     fileName: String
@@ -313,10 +403,10 @@ class Interpreter(
     for {
       _ <- Catching { case e: ThreadDeath => Evaluator.interrupted(e) }
       output <- Res(
-        compilerManager.compileClass(
+        compileClass(
           Preprocessor.Output(code, 0, 0),
-          printer,
-          fileName
+          fileName,
+          os.sub / fileName.stripSuffix(".scala")
         ),
         "Compilation Failed"
       )
@@ -345,10 +435,10 @@ class Interpreter(
     for {
       _ <- Catching { case e: Throwable => e.printStackTrace(); throw e }
       output <- Res(
-        compilerManager.compileClass(
+        compileClass(
           processed,
-          printer,
-          codeSource.printablePath
+          codeSource.printablePath,
+          os.sub / codeSource.fullName.map(_.encoded)
         ),
         "Compilation Failed"
       )
@@ -588,6 +678,9 @@ class Interpreter(
             compileRunBlock(blockMetadata.leadingSpaces, blockMetadata.hookInfo)
           } else {
             compilerManager.addToClasspath(classFiles)
+            // no source here, we only have the byte code from the cache
+            for (outputs <- frameOutputs)
+              outputs.addClassFiles(headFrame, classFiles)
 
             val cls = eval.loadClass(blockMetadata.id.wrapperPath, classFiles)
             val evaluated =
@@ -745,6 +838,9 @@ object Interpreter {
    * @param wrapperNamePrefix
    *   Name to be used as a prefix for source file and classes wrapping user code, that ends in
    *   compilation errors or stack traces in particular
+   * @param frameOutputs
+   *   If non-empty, the sources and byte code of the code compiled in each frame get written
+   *   there
    */
   case class Parameters(
       printer: Printer = Printer(
@@ -765,7 +861,8 @@ object Interpreter {
       classPathWhitelist: Set[Seq[String]] = Set.empty,
       wrapperNamePrefix: String = "cmd",
       warnings: Boolean = false,
-      pkgName: Seq[Name] = Seq(Name("ammonite"), Name("$sess"))
+      pkgName: Seq[Name] = Seq(Name("ammonite"), Name("$sess")),
+      frameOutputs: Option[FrameOutputs] = None
   )
 
   val predefImports = Imports(
