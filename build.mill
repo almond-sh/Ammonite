@@ -1,6 +1,10 @@
-//| mill-version: 1.1.10
+//| mill-version: 1.3.0
+//| mill-jvm-version: 17
 //| mvnDeps:
 //| - io.get-coursier:coursier-launcher_2.13:2.1.25-M19
+// Mill compiles the modules targeting a JVM older than 17 on its own JVM, without
+// passing `-release` when compiling Scala compiler bridges, which Scala versions such
+// as 2.13.8 need on JVMs more recent than 17. Remove `mill-jvm-version` once Mill does.
 package build
 
 // imports
@@ -442,7 +446,98 @@ def scalaCompilerMvnDeps(scalaVersion: String, isScala2: Boolean): Seq[Dep] =
   if (isScala2) Seq(Deps.scalaCompiler(scalaVersion))
   else Seq(mvn"org.scala-lang::scala3-compiler:$scalaVersion")
 
-trait AmmInternalModule extends CrossSbtModule {
+/**
+ * Fixes for the Scala 2.12.8 compiler, so that it can run on the JVMs Mill compiles on.
+ *
+ * Mill runs scalac in-process on a JVM of its own, that is Java 17 or later, even for modules
+ * targeting an earlier JVM. Two bugs of Scala 2.12.8, fixed in 2.12.9, prevent it from
+ * compiling our code there:
+ * - with `-release`, it doesn't find the JDK classes, as it doesn't know the `ct.sym` layout
+ *   of Java 12 and later
+ * - expanding macros fails with "/packages cannot be represented as URI", as it gives the
+ *   class loader of macros an invalid URL for the JDK classes
+ *
+ * Both are in `DirectoryClassPath.scala`, which we take from the sources of scalac 2.12.8,
+ * patch with the changes of 2.12.9, and compile. Modules compiled with 2.12.8 then put the
+ * resulting classes before scalac itself in their compiler class path.
+ *
+ * We compile that file ourselves, with scalac 2.12.8 running on Java 11, rather than via a
+ * `ScalaModule`: Mill would compile it with an unpatched scalac on its own JVM, where 2.12.8
+ * can't read the JDK classes without `-release` either, from Java 21 on.
+ */
+object scalaCompiler2_12_8Patch extends JavaModule {
+  def jvmVersion: T[String] = "11"
+  private def compilerDep = mvn"org.scala-lang:scala-compiler:2.12.8"
+  def scalaCompilerClasspath: T[Seq[PathRef]] = Task {
+    defaultResolver().classpath(Seq(bindDependency()(compilerDep)))(
+      using CoursierModule.ResolvableBoundDep
+    )
+  }
+  def patchedSources: T[PathRef] = Task {
+    val sourcesJar = defaultResolver()
+      .classpath(Seq(bindDependency()(compilerDep)), sources = true, artifactTypes = None)(
+        using CoursierModule.ResolvableBoundDep
+      )
+      .map(_.path)
+      .find(_.last == "scala-compiler-2.12.8-sources.jar")
+      .getOrElse(sys.error("scala-compiler 2.12.8 sources JAR not found"))
+    val fileName = "scala/tools/nsc/classpath/DirectoryClassPath.scala"
+    val unpacked = os.unzip(sourcesJar, Task.dest / "unpacked", includePatterns = Seq(fileName.r))
+    val replacements = Seq(
+      // The class loader of macros gets the JDK classes from this
+      "def asURLs: Seq[URL] = Seq(dir.toUri.toURL)" ->
+        """def asURLs: Seq[URL] = Seq(new URL("jrt:/"))""",
+      // From Java 12 on, ct.sym has an extra module directory level
+      """    rootsForRelease.foreach(root => Files.walk(root).iterator().asScala.filter(Files.isDirectory(_)).foreach { p =>
+        |      if (p.getNameCount > 1) {
+        |        val packageDotted = p.subpath(1, p.getNameCount).toString.replace('/', '.')""".stripMargin ->
+        """    val isJava12OrHigher = scala.util.Properties.isJavaAtLeast("12")
+          |    rootsForRelease.foreach(root => Files.walk(root).iterator().asScala.filter(Files.isDirectory(_)).foreach { p =>
+          |      val moduleNamePathElementCount = if (isJava12OrHigher) 1 else 0
+          |      if (p.getNameCount > root.getNameCount + moduleNamePathElementCount) {
+          |        val packageDotted = p.subpath(moduleNamePathElementCount + root.getNameCount, p.getNameCount).toString.replace('/', '.')""".stripMargin,
+      // Java 13 added an overload of newFileSystem that makes this ambiguous
+      "FileSystems.newFileSystem(ctSym, null)" ->
+        "FileSystems.newFileSystem(ctSym, null: ClassLoader)"
+    )
+    val patched = replacements.foldLeft(os.read(unpacked / os.SubPath(fileName))) {
+      case (content, (from, to)) =>
+        if (!content.contains(from)) sys.error(s"Can't find in $fileName: $from")
+        content.replace(from, to)
+    }
+    os.write(Task.dest / "sources" / os.SubPath(fileName), patched, createFolders = true)
+    PathRef(Task.dest / "sources")
+  }
+  def patchClasses: T[PathRef] = Task {
+    val javaExe =
+      javaHome().map(_.path / "bin" / "java").getOrElse(sys.error("No Java 11 found"))
+    val compilerCp = scalaCompilerClasspath().map(_.path).mkString(java.io.File.pathSeparator)
+    os.proc(
+      javaExe,
+      "-cp",
+      compilerCp,
+      "scala.tools.nsc.Main",
+      "-classpath",
+      compilerCp,
+      "-d",
+      Task.dest,
+      os.walk(patchedSources().path).filter(_.ext == "scala")
+    ).call(stdout = os.Inherit)
+    PathRef(Task.dest)
+  }
+}
+
+/** Puts [[scalaCompiler2_12_8Patch]] in the compiler class path of modules built with 2.12.8. */
+trait ScalaCompilerPatchModule extends ScalaModule {
+  def scalaCompilerClasspath: T[Seq[PathRef]] = Task {
+    val patch =
+      if (scalaVersion() == "2.12.8") Seq(scalaCompiler2_12_8Patch.patchClasses())
+      else Nil
+    patch ++ super.scalaCompilerClasspath()
+  }
+}
+
+trait AmmInternalModule extends CrossSbtModule with ScalaCompilerPatchModule {
   def releaseVersion: T[String] = Task {
     if (Version(scalaVersion()) >= Version("3.8.0")) "17"
     else "11"
@@ -465,7 +560,7 @@ trait AmmInternalModule extends CrossSbtModule {
       mvn"$scalaO:scala-library:$scalaV"
     )
   }
-  trait AmmTests extends super.CrossSbtTests with TestModule.Utest {
+  trait AmmTests extends super.CrossSbtTests with TestModule.Utest with ScalaCompilerPatchModule {
     def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(Deps.utest)
     def forkArgs: T[Seq[String]] = Seq("-Xmx2g", "-Dfile.encoding=UTF8")
     def testForkGrouping: T[Seq[Seq[String]]] = discoveredTestClasses().grouped(1).toSeq
@@ -1101,7 +1196,7 @@ val sbtUrl = "https://github.com/sbt/sbt/releases/download/v2.0.8/sbt-2.0.8.tgz"
 
 /** The `bin` directory of [[sbtUrl]], fetched and extracted by coursier's archive cache. */
 def sbtBinDir: T[String] = Task {
-  val cache = coursier.cache.ArchiveCache[coursier.util.Task]()
+  val cache = coursier.cache.ArchiveCache()
   val archiveDir = Await.result(
     cache.get(coursier.util.Artifact(sbtUrl)).future()(using cache.cache.ec),
     duration.Duration.Inf
