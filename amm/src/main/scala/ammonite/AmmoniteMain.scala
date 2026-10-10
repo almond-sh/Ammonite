@@ -12,9 +12,6 @@ import ammonite.util._
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
-// needed to support deprecated Main.main
-import acyclic.skipped
-
 object AmmoniteMain {
 
   /**

@@ -364,14 +364,6 @@ val fastparseVersion = "3.1.1"
 val scalametaVersion = "4.15.2"
 
 object Deps {
-  // acyclic is published for each full Scala version, and no longer gets published
-  // for the oldest Scala versions we support
-  def acyclic(scalaVersion: String) = {
-    val ver =
-      if (Version(scalaVersion) < Version("2.12.9")) "0.3.14"
-      else "0.3.21"
-    mvn"com.lihaoyi:::acyclic:$ver"
-  }
   val bcprovJdk15on = mvn"org.bouncycastle:bcprov-jdk18on:1.82"
   val cask = mvn"com.lihaoyi::cask:0.10.2"
   val classPathUtil = mvn"io.get-coursier::class-path-util:0.1.4"
@@ -446,19 +438,7 @@ trait AmmInternalModule extends CrossSbtModule {
   }
   def isScala2: T[Boolean] = Task { scalaVersion().startsWith("2.") }
   def scalacOptions: T[Seq[String]] = Task {
-    val maybeAcyclicOptions =
-      if (isScala2()) Seq("-P:acyclic:force")
-      else Nil
-    val releaseOptions = Seq("-release", releaseVersion())
-    maybeAcyclicOptions ++ releaseOptions
-  }
-  def compileMvnDeps: T[Seq[Dep]] = Task {
-    if (isScala2()) Seq(Deps.acyclic(scalaVersion()))
-    else Seq[Dep]()
-  }
-  def scalacPluginMvnDeps: T[Seq[Dep]] = Task {
-    if (isScala2()) Seq(Deps.acyclic(scalaVersion()))
-    else Seq[Dep]()
+    Seq("-release", releaseVersion())
   }
   override def scalaLibraryMvnDeps: T[Seq[Dep]] = Task {
     val scalaV = scalaVersion()

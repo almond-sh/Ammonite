@@ -19,9 +19,6 @@ import coursierapi.Dependency
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
-// needed to support deprecated Main.main
-import acyclic.skipped
-
 /**
  * Contains the various entry points to the Ammonite REPL.
  *
