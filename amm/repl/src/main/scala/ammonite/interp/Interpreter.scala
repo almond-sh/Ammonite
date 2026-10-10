@@ -132,8 +132,9 @@ class Interpreter(
   )
 
   // Unlike the Scala 3 one, the Scala 2 compiler relies on a plugin to generate SemanticDB
-  // files, that is published for each Scala version
-  if (isScala2 && frameOutputs.exists(_.semanticDbs)) {
+  // files, that is published for each Scala version (check frameOutputs first: getting the
+  // Scala version initializes some compiler classes, that cached scripts shouldn't load)
+  if (frameOutputs.exists(_.semanticDbs) && isScala2) {
     val dep = Dependency.of(
       "org.scalameta",
       s"semanticdb-scalac_$scalaVersion",
