@@ -30,7 +30,7 @@ final class UrlZipArchiveClassPath2_12_0__2_12_8(val zipUrl: URL)
 
   override def asClassPathStrings: Seq[String] = Seq(zipUrl.toURI.toASCIIString) // ???
 
-  private val archive = new CustomURLZipArchive(zipUrl)
+  private val archive = CustomURLZipArchive(zipUrl)
 
   private def findDirEntry(pkg: String): Option[archive.DirEntry] =
     archive.allDirsByDottedName.get(pkg)

@@ -1,7 +1,7 @@
 package ammonite.util
 
 import java.io.File
-import java.net.{URI, URL}
+import java.net.{JarURLConnection, URI, URL}
 import java.nio.file.{FileSystem, FileSystems}
 import java.util.zip.{ZipFile, ZipInputStream}
 
@@ -69,10 +69,43 @@ object Classpath {
     files.toVector
   }
 
+  /**
+   * The JAR at the root of `url`, if `url` is a `jar:` URL that points to the root of a JAR.
+   *
+   * Coursier standalone launchers embed the JARs of the class path, and hand out
+   * `jar:file:/…/launcher.jar!/coursier/bootstrap/launcher/jars/foo.jar!/` URLs for them.
+   * Opening those through their `JarURLConnection` gives a `ZipFile` that reads entries
+   * on demand, from the class path JARs the launcher already opened, whereas reading
+   * `url.openStream()` decompresses the whole JAR.
+   *
+   * The returned `ZipFile` is shared with the URL connection cache, so it mustn't be closed.
+   */
+  def openJar(url: URL): Option[ZipFile] =
+    if (url.getProtocol == "jar")
+      try {
+        url.openConnection() match {
+          // no entry name (null for the JDK, empty for coursier launchers): the URL points
+          // to the root of the JAR
+          case conn: JarURLConnection
+              if conn.getEntryName == null || conn.getEntryName.isEmpty =>
+            conn.setUseCaches(true)
+            Option(conn.getJarFile)
+          case _ => None
+        }
+      } catch {
+        case NonFatal(e) =>
+          traceClasspathProblem(s"Classpath element '$url' could not be opened as a JAR: $e")
+          None
+      }
+    else
+      None
+
   def canBeOpenedAsJar(url: URL): Boolean = {
     var zis: ZipInputStream = null
     try {
-      if (url.getProtocol == "file") {
+      if (openJar(url).nonEmpty)
+        true
+      else if (url.getProtocol == "file") {
         // this ignores any preamble in particular, unlike ZipInputStream
         val zf = new ZipFile(new File(url.toURI))
         zf.close()

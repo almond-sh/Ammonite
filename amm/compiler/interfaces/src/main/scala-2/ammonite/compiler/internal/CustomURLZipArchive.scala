@@ -1,7 +1,11 @@
 package ammonite.compiler.internal
 
 import java.io.{ByteArrayInputStream, InputStream}
+import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.{ZipEntry, ZipFile, ZipInputStream}
+
+import ammonite.util.Classpath
 
 import scala.reflect.io.{AbstractFile, Streamable, VirtualFile}
 
@@ -10,6 +14,14 @@ import scala.reflect.io.{AbstractFile, Streamable, VirtualFile}
 // java.util.zip.ZipEntry.getSize to get the actual size of
 // a zip entry, as it is usually -1 (size unknown).
 // Plus allDirsByDottedName was added for scala 2.12, and dirs is memo-ized via a lazy val.
+//
+// When the URL points to the root of a JAR that a JarURLConnection can open, like those of
+// the JARs embedded in coursier standalone launchers, the entries are listed from that JAR
+// and only read when the compiler asks for them. Otherwise, the whole JAR is read and
+// decompressed upfront.
+//
+// Get instances via CustomURLZipArchive.apply, which shares them between the compiler
+// instances Ammonite creates along a session.
 final class CustomURLZipArchive(val url: java.net.URL) extends AbstractFile with Equals { self =>
 
   override def toURL = url
@@ -81,6 +93,15 @@ final class CustomURLZipArchive(val url: java.net.URL) extends AbstractFile with
       override def input: InputStream =
         new ByteArrayInputStream(content)
     }
+
+    final class JarFileEntry(zipFile: ZipFile, zipEntry: ZipEntry)
+        extends Entry(zipEntry.getName) {
+      override def toByteArray: Array[Byte] = Streamable.bytes(input)
+      override def sizeOption =
+        if (zipEntry.getSize >= 0) Some(zipEntry.getSize.toInt) else None
+      override def lastModified = zipEntry.getTime
+      override def input: InputStream = zipFile.getInputStream(zipEntry)
+    }
   }
 
   private def ensureDir(
@@ -106,7 +127,32 @@ final class CustomURLZipArchive(val url: java.net.URL) extends AbstractFile with
     else ensureDir(dirs, dirName(entry.getName), null)
   }
 
-  private lazy val dirs: Map[Seq[String], DirEntry] = {
+  private lazy val dirs: Map[Seq[String], DirEntry] =
+    Classpath.openJar(url) match {
+      // 2.12.11 needs the content of entries upfront (see Entry.File)
+      case Some(zipFile) if !CustomURLZipArchive.is2_12_11 => jarFileDirs(zipFile)
+      case _ => streamDirs()
+    }
+
+  private def jarFileDirs(zipFile: ZipFile): Map[Seq[String], DirEntry] = {
+    val root = new DirEntry("/")
+    val dirs = collection.mutable.HashMap[Seq[String], DirEntry](Nil -> root)
+    val it = zipFile.entries()
+    while (it.hasMoreElements) {
+      val zipEntry = it.nextElement()
+      val dir = getDir(dirs, zipEntry)
+      if (!zipEntry.isDirectory) {
+        // unlike those of a ZipInputStream, the entries of a ZipFile know their size
+        val f =
+          if (zipEntry.getSize == 0) new Entry.EmptyFile(zipEntry.getName)
+          else new Entry.JarFileEntry(zipFile, zipEntry)
+        dir.entries(f.name) = f
+      }
+    }
+    dirs.toMap
+  }
+
+  private def streamDirs(): Map[Seq[String], DirEntry] = {
     val root = new DirEntry("/")
     val dirs = collection.mutable.HashMap[Seq[String], DirEntry](Nil -> root)
     val in = new ZipInputStream(new ByteArrayInputStream(Streamable.bytes(input)))
@@ -167,16 +213,35 @@ final class CustomURLZipArchive(val url: java.net.URL) extends AbstractFile with
     case _ => false
   }
 
-  def allDirsByDottedName: collection.Map[String, DirEntry] = {
+  lazy val allDirsByDottedName: collection.Map[String, DirEntry] =
     dirs.map {
       case (k, v) =>
         k.mkString(".") -> v
     }
-  }
 
 }
 
 object CustomURLZipArchive {
   def closeZipFile = false
+
+  // Keyed by the URL string, as URL#equals and URL#hashCode can resolve host names
+  private val cache = new ConcurrentHashMap[String, CustomURLZipArchive]
+
+  /**
+   * The archive of `url`, shared between the compiler instances Ammonite creates, so that
+   * re-creating a compiler (upon adding dependencies, for example) doesn't list or read the
+   * JARs of the class path again.
+   */
+  def apply(url: URL): CustomURLZipArchive = {
+    val key = url.toExternalForm
+    val existing = cache.get(key)
+    if (existing == null) {
+      val archive = new CustomURLZipArchive(url)
+      val previous = cache.putIfAbsent(key, archive)
+      if (previous == null) archive else previous
+    } else
+      existing
+  }
+
   private val is2_12_11 = scala.util.Properties.versionNumberString == "2.12.11"
 }

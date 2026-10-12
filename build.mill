@@ -241,11 +241,20 @@ val compilerInternalDirs: Seq[CompilerInternalDir] = {
       Seq("CompletionMaker"),
       sv => isScala3(sv) && Version(sv) >= Version("3.7.0") && Version(sv) < Version("3.9.0")
     ),
+    // UrlJarClassPathMaker: ClassPath#classes hands back BinaryFileEntry-s since 3.4.0, and
+    // ClassPath#findClassFile gave way to findClassFileAndModuleFile in 3.9.0 (3.4.x to 3.8.x
+    // would need a variant of their own, none of them being supported for now)
+    CompilerInternalDir(
+      "scala-3.0.0-3.3",
+      Seq("UrlJarClassPathMaker"),
+      sv => isScala3(sv) && Version(sv) < Version("3.4.0")
+    ),
     // 3.9.0 made Completion.CompletionResult.names hand back the site each denotation was
-    // found at, along with the denotations themselves
+    // found at, along with the denotations themselves (CompletionMaker), and is the next
+    // version UrlJarClassPathMaker supports
     CompilerInternalDir(
       "scala-3.9.0+",
-      Seq("CompletionMaker"),
+      Seq("CompletionMaker", "UrlJarClassPathMaker"),
       sv => isScala3(sv) && Version(sv) >= Version("3.9.0")
     )
   )

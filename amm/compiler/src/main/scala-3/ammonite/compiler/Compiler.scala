@@ -12,7 +12,7 @@ import ammonite.compiler.iface.{
   Preprocessor => IPreprocessor,
   _
 }
-import ammonite.compiler.internal.{CompilerHelper, CompilerInternals}
+import ammonite.compiler.internal.{CompilerHelper, CompilerInternals, UrlJarArchive}
 import ammonite.util.{ImportData, Imports, PositionOffsetConversion, Printer}
 import ammonite.util.Util.newLine
 
@@ -122,7 +122,14 @@ class Compiler(
     val dirsCp = dirs.map(u => classpath.ClassPathFactory.newClassPath(AbstractFile.getURL(u)))
     val jarsCp = jars
       .filter(ammonite.util.Classpath.canBeOpenedAsJar)
-      .map(u => classpath.ZipAndJarClassPathFactory.create(AbstractFile.getURL(u)))
+      .map { u =>
+        if (u.getProtocol == "file")
+          classpath.ZipAndJarClassPathFactory.create(AbstractFile.getURL(u))
+        else
+          // dotty only reads JARs from the file system, we read the others ourselves,
+          // like the JARs that coursier standalone launchers embed
+          CompilerInternals.urlJarClassPathMaker.classPath(u, UrlJarArchive.root(u))
+      }
 
     if (whiteListed)
       new dotty.ammonite.compiler.WhiteListClasspath(dirsCp ++ jarsCp ++ extra, whiteList)
