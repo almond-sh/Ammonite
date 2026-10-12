@@ -196,7 +196,7 @@ class Repl(
         outputs,
         interp.scalaVersion,
         interp.scalacOptions ++ interp.bspSemanticDbOptions,
-        Classpath.classpath(initialClassLoader, None)
+        Classpath.classpath(initialClassLoader)
       )
       val server = ReplBspServer.start(socket, session, printer.error)
       printer.info(s"BSP server listening on ${server.socketPath}")

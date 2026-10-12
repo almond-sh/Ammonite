@@ -58,7 +58,7 @@ object BspTests extends TestSuite {
         repl.frameOutputs.get,
         repl.scalaVersion,
         repl.interp.scalacOptions,
-        Classpath.classpath(repl.initialClassLoader, None)
+        Classpath.classpath(repl.initialClassLoader)
       )
       val socketPath = tmpDir / "bsp.sock"
       val server = ReplBspServer.start(socketPath.toString, session)
