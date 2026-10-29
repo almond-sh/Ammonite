@@ -52,15 +52,14 @@ object Compiler {
       outputDir: Option[Path]
   ): Unit = {
 
-    val outputDir0 = outputDir.map(os.Path(_, os.pwd))
     for ((name, bytes) <- classFiles) {
       val elems = name.split('/').toList
       val output = writeDeep(dynamicClasspath, elems)
       output.write(bytes)
       output.close()
 
-      for (dir <- outputDir0)
-        os.write.over(dir / elems, bytes, createFolders = true)
+      for (dir <- outputDir)
+        CompilerUtil.writeOver(dir, elems, bytes)
     }
 
   }
@@ -314,11 +313,11 @@ object Compiler {
         }
 
         for {
-          dir <- outputDir.map(os.Path(_, os.pwd))
+          dir <- outputDir
           f <- outputFiles
         } {
           val segments = f.path.split("/").toList.tail
-          os.write.over(dir / segments, f.toByteArray, createFolders = true)
+          CompilerUtil.writeOver(dir, segments, f.toByteArray)
         }
 
         val imports = lastImports.toList

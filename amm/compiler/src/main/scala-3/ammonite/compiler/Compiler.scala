@@ -508,15 +508,14 @@ object Compiler:
                      dynamicClasspath: AbstractFile,
                      outputDir: Option[Path]): Unit = {
 
-    val outputDir0 = outputDir.map(os.Path(_, os.pwd))
     for((name, bytes) <- classFiles){
       val elems = name.split('/').toList
       val output = writeDeep(dynamicClasspath, elems)
       output.write(bytes)
       output.close()
 
-      for (dir <- outputDir0)
-        os.write.over(dir / elems, bytes, createFolders = true)
+      for (dir <- outputDir)
+        CompilerUtil.writeOver(dir, elems, bytes)
     }
 
   }

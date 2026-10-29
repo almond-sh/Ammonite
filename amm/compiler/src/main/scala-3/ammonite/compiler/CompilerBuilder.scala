@@ -27,7 +27,7 @@ case class CompilerBuilder(
     classPathWhiteList: Set[Seq[String]],
     lineNumberModifier: Boolean
   ): ICompiler = {
-    val tempDir = AbstractFile.getDirectory(outputDir.getOrElse(os.temp.dir().toNIO))
+    val tempDir = AbstractFile.getDirectory(outputDir.getOrElse(CompilerUtil.tempDir()))
     Compiler.addToClasspath(dynamicClassPath, tempDir, outputDir)
     new Compiler(
       tempDir,

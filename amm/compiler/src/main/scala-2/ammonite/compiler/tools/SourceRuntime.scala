@@ -1,5 +1,8 @@
 package ammonite.compiler.tools
 
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+
 import javassist.{ByteArrayClassPath, CtClass, CtMethod}
 
 import ammonite.compiler.Highlighter
@@ -184,6 +187,15 @@ object SourceRuntime {
     pool.get(runtimeCls.getName)
   }
 
+  private def readResource(path: Seq[String]): Array[Byte] = {
+    val name = path.mkString("/")
+    val is = Thread.currentThread().getContextClassLoader.getResourceAsStream(name)
+    if (is == null)
+      throw new java.io.FileNotFoundException(s"Resource $name not found")
+    try is.readAllBytes()
+    finally is.close()
+  }
+
   def loadSource(
       runtimeCls: Class[_],
       getLineNumber: CtClass => Either[String, Int]
@@ -194,7 +206,7 @@ object SourceRuntime {
     for {
       bytecode <-
         try {
-          Right(os.read.bytes(os.resource / pkg / (clsName + ".class"))).right
+          Right(readResource(pkg.toSeq :+ (clsName + ".class"))).right
         } catch {
           case e: Throwable =>
             Left("Unable to find bytecode for class " + runtimeCls.getName).right
@@ -207,7 +219,7 @@ object SourceRuntime {
       srcFile <- Right(ctCls.getClassFile.getSourceFile).right
       sourceCode <-
         try {
-          Right(os.read(os.resource / pkg / srcFile)).right
+          Right(new String(readResource(pkg.toSeq :+ srcFile), StandardCharsets.UTF_8)).right
         } catch {
           case e: Throwable =>
             Left("Unable to find sourcecode for class " + runtimeCls.getName).right
@@ -263,9 +275,13 @@ object SourceRuntime {
         }) ()
 
         val targetLine = math.max(0, loc.lineNum - verticalOffset)
-        val tmpFile = os.temp(output.mkString("\n"), suffix = "." + loc.fileName)
-        os.proc(command(targetLine).values, tmpFile)
-          .call(stdin = os.Inherit, stdout = os.Inherit, stderr = os.Inherit)
+        val tmpFile = Files.createTempFile(null, "." + loc.fileName)
+        tmpFile.toFile.deleteOnExit()
+        Files.write(tmpFile, output.mkString("\n").getBytes(StandardCharsets.UTF_8))
+        val cmd = command(targetLine).values :+ tmpFile.toString
+        val exitCode = new ProcessBuilder(cmd: _*).inheritIO().start().waitFor()
+        if (exitCode != 0)
+          throw new Exception(s"Command ${cmd.mkString(" ")} exited with code $exitCode")
       case Left(msg) => println(msg)
     }
   }
