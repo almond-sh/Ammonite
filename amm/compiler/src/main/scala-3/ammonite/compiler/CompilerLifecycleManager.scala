@@ -38,8 +38,8 @@ class CompilerLifecycleManager(
   def init(): Unit = init(force = false)
 
   private[this] object Internal {
-    outputDir.map(os.Path(_, os.pwd)).foreach(os.makeDir.all(_))
-    val dynamicClasspath = AbstractFile.getDirectory(outputDir.getOrElse(os.temp.dir().toNIO))
+    outputDir.foreach(java.nio.file.Files.createDirectories(_))
+    val dynamicClasspath = AbstractFile.getDirectory(outputDir.getOrElse(CompilerUtil.tempDir()))
     var compiler: ammonite.compiler.Compiler = null
     val onCompilerInit = mutable.Buffer.empty[DottyCompiler => Unit]
     val onSettingsInit = mutable.Buffer.empty[FreshContext => Unit] // TODO Pass a SettingsState too

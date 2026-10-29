@@ -8,6 +8,10 @@ def mainA() = {
 }
 
 @main
-def functionB(i: Int, s: String, path: java.nio.file.Path = os.pwd.toNIO) = {
-  println(s"Hello! ${s * i} ${os.pwd.toNIO.relativize(path)}.")
+def functionB(
+    i: Int,
+    s: String,
+    path: java.nio.file.Path = java.nio.file.Paths.get("").toAbsolutePath
+) = {
+  println(s"Hello! ${s * i} ${java.nio.file.Paths.get("").toAbsolutePath.relativize(path)}.")
 }

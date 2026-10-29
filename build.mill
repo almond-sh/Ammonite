@@ -777,8 +777,7 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
       super.mvnDeps() ++ scalaCompilerMvnDeps(scalaVersion(), isScala2()) ++ scalaSpecificDeps ++
         Seq(
           Deps.javassist,
-          Deps.javaparserCore,
-          Deps.osLib
+          Deps.javaparserCore
         )
     }
 
@@ -987,7 +986,9 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
       }
       def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ amm.compiler().mvnDeps() ++ Seq(
         Deps.scalazCore,
-        Deps.coursierVersions(scalaVersion())
+        Deps.coursierVersions(scalaVersion()),
+        // not exposed to thin-mode user code any more, but many test sessions use it
+        Deps.osLib
       )
     }
   }
@@ -1060,7 +1061,9 @@ trait MainModule extends AmmModule {
     def moduleDeps: Seq[JavaModule] =
       super.moduleDeps ++ Seq(amm.compiler().test, amm.repl().test(crossValue))
     def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-      Deps.scalaJava8Compat
+      Deps.scalaJava8Compat,
+      // not exposed to thin-mode user code any more, but many test scripts use it
+      Deps.osLib
     )
 
     // Some tests run scripts whose arguments default to os.pwd, and check the
