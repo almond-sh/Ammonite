@@ -1,5 +1,6 @@
 //| mill-version: 1.3.0
 //| mill-jvm-version: 17
+//| mill-jvm-opts: ["-Xmx4g"]
 //| mvnDeps:
 //| - io.get-coursier:coursier-launcher_2.13:2.1.25-M19
 // Mill compiles the modules targeting a JVM older than 17 on its own JVM, without
