@@ -400,15 +400,6 @@ object AdvancedTests extends TestSuite {
       else
         "Disabled in Scala 3"
     }
-    test("desugar") {
-      if (check.scala2)
-        check.session("""
-          @ desugar{1 + 2 max 3}
-          res0: compiler.tools.Desugared = scala.Predef.intWrapper(3).max(3)
-        """)
-      else
-        "Disabled in Scala 3"
-    }
     test("loadingModulesInPredef") {
 
       val dir = os.pwd / "amm" / "src" / "test" / "resources" / "scripts" / "predefWithLoad"

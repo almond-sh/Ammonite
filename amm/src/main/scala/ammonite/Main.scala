@@ -38,8 +38,8 @@ import scala.concurrent.duration.Duration
  * @param predefCode Any additional code you want to run before the REPL session
  *               starts. Can contain multiple blocks separated by `@`s
  * @param defaultPredef Do you want to include the "standard" predef imports
- *                      provided by Ammonite? These include tools like `source`,
- *                      `desugar`, and other helpers. Can be disabled to give a clean
+ *                      provided by Ammonite? These include `exit`, the `@main`
+ *                      annotation, and other helpers. Can be disabled to give a clean
  *                      namespace for you to fill using your own predef.
  * @param storageBackend Where will all of Ammonite's persistent data get
  *                       stored? Things like any `predef.sc` file,

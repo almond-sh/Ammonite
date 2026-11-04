@@ -12,8 +12,8 @@ case class Config(
 object Config {
 
   /**
-   * Reads the `os.Path` options below. User scripts get a `java.nio.file.Path` reader
-   * instead, from [[ammonite.repl.tools.Util.PathRead]], so that the modules they
+   * Reads the `os.Path` options below. The `@main` methods of user scripts get a
+   * `java.nio.file.Path` reader instead, from [[Scripts.runScript]], so that the modules they
    * compile against don't depend on os-lib.
    */
   implicit object PathRead extends mainargs.TokensReader.Simple[os.Path] {

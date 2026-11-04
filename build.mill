@@ -402,8 +402,6 @@ object Deps {
   val fansi = mvn"com.lihaoyi::fansi:0.5.1"
   val fastparse = mvn"com.lihaoyi::fastparse:$fastparseVersion"
   val geny = mvn"com.lihaoyi::geny:1.1.1"
-  val javaparserCore = mvn"com.github.javaparser:javaparser-core:3.2.12"
-  val javassist = mvn"org.javassist:javassist:3.21.0-GA"
   val jlineJna = mvn"org.jline:jline-terminal-jna:3.14.1"
   val jlineReader = mvn"org.jline:jline-reader:3.14.1"
   val jlineTerminal = mvn"org.jline:jline-terminal:3.14.1"
@@ -775,11 +773,7 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
           Seq[Dep](
             mvn"org.ow2.asm:asm:9.9.1"
           )
-      super.mvnDeps() ++ scalaCompilerMvnDeps(scalaVersion(), isScala2()) ++ scalaSpecificDeps ++
-        Seq(
-          Deps.javassist,
-          Deps.javaparserCore
-        )
+      super.mvnDeps() ++ scalaCompilerMvnDeps(scalaVersion(), isScala2()) ++ scalaSpecificDeps
     }
 
     /** Where [[ammonite.compiler.internal.CompilerInternals]] comes from. */
@@ -847,7 +841,6 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
       def dependencyResourceFileName = "amm-dependencies.txt"
       def moduleDeps: Seq[PublishModule] = Seq(amm.util())
       def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(
-        Deps.mainargs,
         Deps.geny,
         Deps.coursierInterface
       )
@@ -919,6 +912,17 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
       super.compileMvnDeps() ++ (if (isScala3(crossScalaVersion)) Seq.empty[Dep]
                                  else Seq(Deps.scalaReflect(scalaVersion())))
 
+    /**
+     * mainargs, that the `@main` methods of user scripts are compiled against (it's in
+     * `Interpreter.predefImports`), and that user code must thus see in thin mode too, even
+     * though neither amm.repl.api nor amm.compiler depend on it.
+     */
+    def scriptMainClassPath: T[Seq[PathRef]] = Task {
+      defaultResolver().classpath(Seq(bindDependency()(Deps.mainargs)))(
+        using CoursierModule.ResolvableBoundDep
+      )
+    }
+
     object test extends Cross[ReplTestModule](fullScalaVersionsFor(crossScalaVersion))
     trait ReplTestModule extends Cross.Module[String]
         with AmmTests with AmmDependenciesResourceFileModule {
@@ -956,6 +960,7 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
         generateApiWhitelist(
           amm.repl.api().exposedClassPath() ++
             amm.compiler().exposedClassPath() ++
+            scriptMainClassPath() ++
             Seq(compile().classes) ++
             defaultResolver().classpath(
               (this.compileMvnDeps() ++ allMvnDeps()).map(bindDependency())
@@ -1023,7 +1028,8 @@ trait MainModule extends AmmModule {
   def thinWhitelist: T[PathRef] = Task {
     generateApiWhitelist(
       amm.repl.api().exposedClassPath() ++
-        amm.compiler().exposedClassPath()
+        amm.compiler().exposedClassPath() ++
+        amm.repl().scriptMainClassPath()
     )
   }
   def localClasspath: T[Seq[PathRef]] = Task {
@@ -1078,6 +1084,7 @@ trait MainModule extends AmmModule {
       generateApiWhitelist(
         amm.repl.api().exposedClassPath() ++
           amm.compiler().exposedClassPath() ++
+          amm.repl().scriptMainClassPath() ++
           Seq(amm.repl().test(crossValue).compile().classes, compile().classes) ++
           defaultResolver().classpath((compileMvnDeps() ++ allMvnDeps()).map(bindDependency()))(
             using CoursierModule.ResolvableBoundDep
@@ -1130,7 +1137,8 @@ trait ShellModule extends AmmInternalModule {
   def thinWhitelist: T[PathRef] = Task {
     generateApiWhitelist(
       amm.repl.api().exposedClassPath() ++
-        amm.compiler().exposedClassPath()
+        amm.compiler().exposedClassPath() ++
+        amm.repl().scriptMainClassPath()
     )
   }
   def localClasspath: T[Seq[PathRef]] = Task {
