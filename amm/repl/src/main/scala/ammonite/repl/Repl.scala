@@ -24,7 +24,6 @@ class Repl(
     customPredefs: Seq[PredefInfo],
     wd: os.Path,
     welcomeBanner: Option[String],
-    replArgs: IndexedSeq[Bind[_]] = Vector.empty,
     initialColors: Colors = Colors.Default,
     replCodeWrapper: CodeWrapper,
     scriptCodeWrapper: CodeWrapper,
@@ -61,13 +60,6 @@ class Repl(
 
   val (colors, printer) =
     Interpreter.initPrinters(initialColors, output, error, true)
-
-  val argString = replArgs.zipWithIndex.map { case (b, idx) =>
-    s"""
-    val ${b.name} =
-      ammonite.repl.ReplBridge.value.Internal.replArgs($idx).value.asInstanceOf[${b.typeName.value}]
-    """
-  }.mkString(newLine)
 
   val frames = Ref(List(ammonite.runtime.Frame.createInitial(initialClassLoader)))
 
@@ -129,7 +121,6 @@ class Repl(
       "ammonite.repl.ReplBridge",
       "repl",
       new ReplApiImpl {
-        def replArgs0 = repl.replArgs
         def printer = repl.printer
         val colors = repl.colors
         def sess = repl.sess0

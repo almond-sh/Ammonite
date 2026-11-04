@@ -2,7 +2,7 @@ package ammonite.repl
 
 import ammonite.interp.api.APIHolder
 import ammonite.repl.api.ReplAPI
-import ammonite.util.{Bind, _}
+import ammonite.util._
 import ammonite.util.Util.newLine
 
 import scala.collection.mutable
@@ -23,12 +23,10 @@ trait FullReplAPI extends ReplAPI with FullReplAPIScalaVersionSpecific { replApi
       |description of how to use the REPL, check out https://ammonite.io
     """.stripMargin.trim
 
-  protected[ammonite] def replArgs0: IndexedSeq[Bind[_]]
   protected[this] def internal0: FullReplAPI.Internal =
     new FullReplAPI.Internal {
       def pprinter = replApi.pprinter
       def colors = replApi.colors
-      def replArgs: IndexedSeq[Bind[_]] = replArgs0
     }
 
   /**
@@ -43,7 +41,6 @@ object FullReplAPI {
   trait Internal {
     def pprinter: Ref[pprint.PPrinter]
     def colors: Ref[Colors]
-    def replArgs: IndexedSeq[Bind[_]]
 
     def combinePrints(iters: Iterator[String]*) = {
       iters.toIterator

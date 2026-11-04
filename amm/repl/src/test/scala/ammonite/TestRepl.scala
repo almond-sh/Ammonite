@@ -124,7 +124,6 @@ class TestRepl(
   lazy val fullReplApi: FullReplAPI.Internal = new FullReplAPI.Internal {
     def pprinter = replApi.pprinter
     def colors = replApi.colors
-    def replArgs: IndexedSeq[Bind[_]] = replApi.replArgs0
 
     override def print[T: TPrint](
                                    value: => T,
@@ -141,7 +140,6 @@ class TestRepl(
   }
 
   lazy val replApi: ReplApiImpl = new ReplApiImpl {
-    def replArgs0 = Vector.empty[Bind[_]]
     def printer = printer0
 
     def sess = sess0
