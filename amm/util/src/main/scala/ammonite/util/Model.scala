@@ -6,8 +6,6 @@ package ammonite.util
 
 import java.io.PrintStream
 
-import _root_.org.tpolecat.typename._
-
 import scala.reflect.NameTransformer
 
 /**
@@ -287,19 +285,6 @@ object Colors {
     fansi.Attrs.Empty,
     fansi.Attrs.Empty
   )
-}
-
-/**
- * Models a binding of a value to a typed name, and is passed into the
- * REPL so it can re-create the bindings inside the REPL's scope
- */
-case class Bind[T](name: String, value: T)(implicit val typeName: TypeName[T])
-object Bind {
-  implicit def ammoniteReplArrowBinder[T](t: (String, T))(implicit
-      typeName: TypeName[T]
-  ): Bind[T] = {
-    Bind(t._1, t._2)(typeName)
-  }
 }
 
 /**

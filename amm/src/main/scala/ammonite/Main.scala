@@ -10,7 +10,6 @@ import ammonite.interp.{Watchable, Interpreter, PredefInitialization}
 import ammonite.runtime.{Frame, Storage}
 import ammonite.main._
 import ammonite.repl.{FrontEndAPIImpl, Repl}
-import ammonite.util.Util.newLine
 import ammonite.util._
 
 import scala.annotation.tailrec
@@ -121,25 +120,12 @@ case class Main(
   /**
    * Instantiates an ammonite.Repl using the configuration
    */
-  def instantiateRepl(replArgs: IndexedSeq[Bind[_]] = Vector.empty) = {
+  def instantiateRepl() = {
 
     loadedPredefFile.right.map { predefFileInfoOpt =>
       val augmentedImports =
         if (defaultPredef) Defaults.replImports ++ Interpreter.predefImports
         else Imports()
-
-      val argString = replArgs.zipWithIndex.map { case (b, idx) =>
-        s"""
-        val ${b.name} = ammonite
-          .repl
-          .ReplBridge
-          .value
-          .Internal
-          .replArgs($idx)
-          .value
-          .asInstanceOf[${b.typeName.value}]
-        """
-      }.mkString(newLine)
 
       new Repl(
         inputStream,
@@ -147,15 +133,12 @@ case class Main(
         errorStream,
         storage = storageBackend,
         baseImports = augmentedImports,
-        basePredefs = Seq(
-          PredefInfo(Name("ArgsPredef"), argString, false, None)
-        ),
+        basePredefs = Seq(),
         customPredefs = predefFileInfoOpt.toSeq ++ Seq(
           PredefInfo(Name("CodePredef"), predefCode, false, Some((wd / "(console)").toNIO))
         ),
         wd = wd,
         welcomeBanner = welcomeBanner,
-        replArgs = replArgs,
         initialColors = colors,
         replCodeWrapper = replCodeWrapper,
         scriptCodeWrapper = scriptCodeWrapper,
@@ -231,16 +214,16 @@ case class Main(
   }
 
   /**
-   * Run the REPL, with any additional bindings you wish to provide.
+   * Run the REPL.
    *
    * Returns an `Any` representing any value that the user passed into the
    * `exit` call when closing the REPL (defaults to `(): Unit`). Also returns
    * a sequence of paths that were watched as a result of this REPL run, in
    * case you wish to re-start the REPL when any of them change.
    */
-  def run(replArgs: Bind[_]*): (Res[Any], Seq[(Watchable, Long)]) = {
+  def run(): (Res[Any], Seq[(Watchable, Long)]) = {
 
-    instantiateRepl(replArgs.toIndexedSeq) match {
+    instantiateRepl() match {
       case Left(missingPredefInfo) => missingPredefInfo
       case Right(repl) =>
         repl.initializePredef() match {
