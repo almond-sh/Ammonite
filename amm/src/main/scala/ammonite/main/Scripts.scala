@@ -42,6 +42,13 @@ object Scripts {
              |val `$$routesOuter` = this
              |object `$$routes`
              |extends scala.Function0[mainargs.ParserForMethods[$$routesOuter.type]]{
+             |  // Reads paths, resolved against the current directory when they are relative
+             |  implicit object PathRead
+             |  extends mainargs.TokensReader.Simple[java.nio.file.Path] {
+             |    def shortName = "path"
+             |    def read(strs: scala.Seq[String]) =
+             |      scala.Right(java.nio.file.Paths.get(strs.last).toAbsolutePath.normalize())
+             |  }
              |  def apply() = $genRoutesCode
              |}
           """.stripMargin

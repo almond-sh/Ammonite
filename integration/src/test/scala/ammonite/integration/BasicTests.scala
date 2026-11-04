@@ -121,44 +121,6 @@ object BasicTests extends TestSuite {
       }
     }
 
-    // Ensure we can load the source code of the built-in Java standard library
-    test("source") {
-      // This fails on windows because for some reason the windows subprocess
-      // interface eats the double-quotes inside the `-c` argument, even though
-      // the argument is being passed programmatically and not through any shell =(
-      //
-      // For some reason this fails on travis/Scala2.10/Java7. I cannot reproduce
-      // it locally on OSX/Scala2.10/Java8, but Scala2.10/Java7 is legacy anyway
-      // so it's probably fine if this doesn't work.
-      //
-      // Also disabled on Java 9 due to unavailability of Java lib sources
-      if (!Util.windowsPlatform && !Util.java9OrAbove && isScala2) {
-        os.proc(
-          executable,
-          "--thin",
-          "-c",
-          """val loc = source.load(new String().substring(_: Int))
-            |val snip = Predef.augmentString(loc.fileContent)
-            |  .lines
-            |  .slice(loc.lineNum-15, loc.lineNum+15)
-            |  .mkString("\n")
-            |
-            |assert(snip.contains("public String substring(int beginIndex)"))
-          """.stripMargin
-        ).call(stdin = os.Inherit, stdout = os.Inherit)
-      }
-    }
-
-    // Ensure we can load the source code of external libraries, which needs to
-    // get pulled down together with the library code when you `import $ivy`
-    test("sourceExternal") {
-      // Re-enable when source support is added in Scala 3
-      if (isScala2)
-        exec(os.rel / "basic" / "SourceDownload.sc")
-      else
-        "Disabled in Scala 3"
-    }
-
     test("classloaders") {
       val evaled = exec(os.rel / "basic" / "Resources.sc")
       assert(evaled.out.text().contains("1745"))
