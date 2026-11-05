@@ -216,10 +216,7 @@ object AutocompleteTests extends TestSuite {
       }
 
       test("deep") - checking { complete =>
-        if (complete.check.scala2)
-          deepTests(complete)
-        else
-          "Disabled in Scala 3"
+        deepTests(complete)
       }
 
       test("defTab") - checking { complete =>

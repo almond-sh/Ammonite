@@ -27,7 +27,7 @@ import dotc.core.Comments.{ContextDoc, ContextDocstrings}
 import dotc.core.Phases.{Phase, unfusedPhases}
 import dotc.core.Symbols.{defn, Symbol}
 import dotc.fromtasty.TastyFileUtil
-import dotc.interactive.Completion
+import dotc.interactive.{Completion, Interactive}
 import dotc.report
 import dotc.reporting
 import dotc.semanticdb
@@ -398,17 +398,22 @@ class Compiler(
         }
       }
 
-      for {
+      val found = for {
         member <- defn.RootClass.denot.info.allMembers.map(_.symbol).toList
         sym <- rec(member)
+        // module classes come with their module values, no need to list them twice
+        if !sym.is(Flags.ModuleClass)
         // Scala 2 comment: sketchy name munging because I don't know how to do this properly
         // Note lack of back-quoting support.
         strippedName = sym.name.toString.stripPrefix("package$").stripSuffix("$")
         if strippedName.startsWith(name)
+        // inner and anonymous classes of Java class files
+        if !strippedName.contains('$')
         (pref, _) = sym.fullName.toString.splitAt(sym.fullName.toString.lastIndexOf('.') + 1)
         out = pref + strippedName
         if out != ""
-      } yield out
+      } yield out.replace(".package$.", ".")
+      found.distinct
     }
 
     def blacklisted(s: Symbol) = {
@@ -448,6 +453,36 @@ class Compiler(
     val filteredCompletions = completions.filter { c =>
       c.symbols.isEmpty || c.symbols.exists(!blacklisted(_))
     }
+    // Like in Scala 2, when an identifier matches nothing in scope, look for it in all
+    // the packages and package objects we can see (`fromN` -> `scala.concurrent.duration.fromNow`)
+    val deepIdentOpt =
+      if (filteredCompletions.nonEmpty) None
+      else {
+        given Context = ctx1
+        Interactive.pathTo(unit.tpdTree, srcPos.span) match {
+          case (id: tpd.Ident) :: _ if id.span.exists =>
+            Some((id.span.start, id.name.decode.toString))
+          case _ => None
+        }
+      }
+    deepIdentOpt match {
+      case Some((identStart, name)) =>
+        val deep = deepCompletion(name)
+        // Like Scala 2, add an empty completion when there are several candidates, so that
+        // their common prefix doesn't get inserted right away
+        val names = if (deep.length <= 1) deep else deep :+ ""
+        (identStart - prefix.length, names, Nil)
+      case None =>
+        shallowCompletions(start, prefix, ctx1, filteredCompletions)
+    }
+  }
+
+  private def shallowCompletions(
+    start: Int,
+    prefix: String,
+    ctx1: Context,
+    filteredCompletions: List[Completion]
+  ): (Int, Seq[String], Seq[String]) = {
     val signatures = {
       given Context = ctx1
       for {
