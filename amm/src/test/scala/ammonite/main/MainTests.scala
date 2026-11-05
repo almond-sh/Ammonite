@@ -65,6 +65,14 @@ object MainTests extends TestSuite {
         val out = evaled.out
         assert(out.contains("Hello! 1"))
       }
+      test("noWarningsAboutGeneratedCode") {
+        // Scala 3.9 warns about identifiers with '$' (E230), like the `$routes` object
+        // Ammonite generates for scripts with main methods
+        val evaled = exec("Main.sc")
+        assert(evaled.success)
+        val err = evaled.err
+        assert(!err.toLowerCase(java.util.Locale.ROOT).contains("warning"))
+      }
       test("multiple") {
         test("positiveNoArgs") {
           val evaled = exec("MultiMain.sc", "mainA")

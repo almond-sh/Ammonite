@@ -152,7 +152,8 @@ class CompilerLifecycleManager(
       printer,
       processed.prefixCharLength,
       processed.userCodeNestingLevel,
-      fileName
+      fileName,
+      processed.suffixCharLength
     )
     Internal.compilationCount += 1
     compiled

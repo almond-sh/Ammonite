@@ -277,7 +277,8 @@ object Compiler {
         printer: Printer,
         importsLen0: Int,
         userCodeNestingLevel: Int,
-        fileName: String
+        fileName: String,
+        suffixLen: Int
     ): Option[ICompiler.Output] = {
 
       def enumerateVdFiles(d: VirtualDirectory): Iterator[AbstractFile] = {
