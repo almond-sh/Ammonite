@@ -318,6 +318,18 @@ object ImportTests extends TestSuite {
         }
       }
     }
+    test("rootPrefixed") {
+      check.session("""
+        @ import _root_.scala.util.Try
+        import _root_.scala.util.Try
+
+        @ val t = Try(2).get
+        t: Int = 2
+
+        @ Try(3).get
+        res2: Int = 3
+      """)
+    }
     test("collapsing") {
       check.session("""
         @ object Foo{ val bar = 1 }

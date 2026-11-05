@@ -11,7 +11,7 @@ import dotc.core.Flags
 import dotc.core.Contexts._
 import dotc.core.Names.Name
 import dotc.core.Phases.Phase
-import dotc.core.Symbols.{NoSymbol, Symbol, newSymbol}
+import dotc.core.Symbols.{NoSymbol, Symbol, defn, newSymbol}
 import dotc.core.Types.{
   ExprType,
   MethodType,
@@ -104,8 +104,12 @@ class AmmonitePhase(
         rec(expr).reverse.unzip
       }
 
-      val headFullPath = symbolHead.fullName.decode.toString.split('.')
-        .map(n => if (n.endsWith("$")) n.stripSuffix("$") else n) // meh
+      val headFullPath =
+        // `import _root_.a.b`
+        if (symbolHead == defn.RootPackage || symbolHead == defn.RootClass) Array.empty[String]
+        else
+          symbolHead.fullName.decode.toString.split('.')
+            .map(n => if (n.endsWith("$")) n.stripSuffix("$") else n) // meh
       // prefix package imports with `_root_` to try and stop random
       // variables from interfering with them. If someone defines a value
       // called `_root_`, this will still break, but that's their problem
