@@ -128,6 +128,16 @@ object ParserTests extends TestSuite {
       test("notEndOfCommand") {
 
         test - assertIncomplete("{")
+        test - {
+          if (ammonite.compiler.CompilerBuilder.scalaVersion.startsWith("3."))
+            // accepted at the outermost level only, that the content of the block is
+            // parsed at, once its closing brace is there
+            assertIncomplete("""
+              {
+                opaque type Meters = Double
+            """)
+          else "N/A"
+        }
         test - assertIncomplete("foo.bar /* incomplete block comment")
         test - assertIncomplete("""
           val r = (1 until 1000.view.filter(n => n % 3 == 0 || n % 5 == 0)

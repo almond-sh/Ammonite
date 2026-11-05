@@ -54,6 +54,7 @@ class Parsers extends IParser {
     reporter.hasErrors || !needsMore
 
   private val BlockPat = """(?s)^\s*\{(.*)\}\s*$""".r
+  private val OpenBlockPat = """^\s*\{""".r
 
   def split(
     code: String,
@@ -72,22 +73,38 @@ class Parsers extends IParser {
     ignoreIncomplete: Boolean,
     fileName: String
   ): Option[Either[String, Seq[(Int, String)]]] = {
-    val code0 = code match {
-      case BlockPat(wrapped) => wrapped
-      case _ => code
+    val (code0, isIncompleteBlock) = code match {
+      case BlockPat(wrapped) => (wrapped, false)
+      case _ => (code, OpenBlockPat.findPrefixMatchOf(code).nonEmpty)
     }
 
     given Context = initCtx
-    val reporter = Compiler.newStoreReporter()
-    val source   = SourceFile.virtual("<splitter>", code0, maybeIncomplete = true)
-    val unit     = CompilationUnit(source, mustExist = false)
-    val localCtx = ctx.fresh
-                      .setCompilationUnit(unit)
-                      .setReporter(reporter)
-    var needsMore = false
-    val stats = reporter.withIncompleteHandler((_, _) => needsMore = true) {
-      parseStats(using localCtx)
+    def parse(code: String) = {
+      val reporter = Compiler.newStoreReporter()
+      val source   = SourceFile.virtual("<splitter>", code, maybeIncomplete = true)
+      val unit     = CompilationUnit(source, mustExist = false)
+      val localCtx = ctx.fresh
+                        .setCompilationUnit(unit)
+                        .setReporter(reporter)
+      var needsMore = false
+      val stats = reporter.withIncompleteHandler((_, _) => needsMore = true) {
+        parseStats(using localCtx)
+      }
+      (reporter, localCtx, needsMore, stats)
     }
+    val (reporter, localCtx, needsMore, stats) = parse(code0)
+
+    // While a `{ ... }` block wrapping a multi-line command is being typed, its content is
+    // parsed as a nested block, where things like `opaque type` aren't accepted, whereas they
+    // are once the block is complete (and unwrapped by BlockPat). If the content parses fine
+    // at the outermost level, the block is just missing its closing brace: wait for more input
+    // (only when checking whether a REPL command is complete).
+    lazy val stillTypingBlock =
+      ignoreIncomplete && reporter.hasErrors && isIncompleteBlock && {
+        val content = OpenBlockPat.replaceFirstIn(code0, " ")
+        val (contentReporter, _, _, _) = parse(content)
+        !contentReporter.hasErrors
+      }
 
     val nl = System.lineSeparator
     def errors = reporter
@@ -100,9 +117,9 @@ class Parsers extends IParser {
       }
       .mkString(nl)
 
-    if (reporter.hasErrors)
+    if (reporter.hasErrors && !stillTypingBlock)
       Some(Left(s"$fileName$nl$errors"))
-    else if (needsMore)
+    else if (needsMore || reporter.hasErrors)
       None
     else {
       val startIndices = stats.toArray.map(_.startPos(using localCtx).point)

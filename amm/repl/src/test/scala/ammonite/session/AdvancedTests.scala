@@ -644,6 +644,36 @@ object AdvancedTests extends TestSuite {
           res4: String = "testtest"
         """)
     }
+    test("opaque-types") {
+      if (scala2) "N/A"
+      else
+        check.session("""
+          @ opaque type Meters = Double
+          defined type Meters
+
+          @ val m: Meters = 1.0
+          error: Found:    (1.0d : Double)
+
+          @ {
+          @ opaque type Km = Double
+          @ object Km {
+          @   def apply(d: Double): Km = d
+          @   extension (k: Km) def value: Double = k
+          @ }
+          @ }
+          defined type Km
+          defined object Km
+
+          @ val k = Km(2.5)
+          k: Km = 2.5
+
+          @ k.value
+          res3: Double = 2.5
+
+          @ val d: Double = k
+          error: Required: Double
+        """)
+    }
     test("output-directory") {
       val dir = os.temp.dir(prefix = "amm-output-dir-test")
       val predef0 =
