@@ -184,10 +184,10 @@ object EvaluatorTests extends TestSuite {
       if (check.scala2 || check.scalaVersion.startsWith("3.3.")) "N/A"
       else check.session("""
         @ val t = (name = "a", age = 2)
-        t: (name : String, age : Int) = ("a", 2)
+        t: (name : String, age : Int) = (name = "a", age = 2)
 
         @ val single = (x = 1)
-        single: (x : Int) = Tuple1(_1 = 1)
+        single: (x : Int) = (x = 1)
 
         @ List((a = 1, b = "x"))
         res2: List[(a : Int, b : String)] = List((1, "x"))

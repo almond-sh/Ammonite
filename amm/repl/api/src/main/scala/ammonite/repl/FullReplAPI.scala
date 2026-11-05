@@ -38,14 +38,18 @@ trait FullReplAPI extends ReplAPI with FullReplAPIScalaVersionSpecific { replApi
 
 object FullReplAPI {
 
+  /** Separates the field names passed to `Internal.printTyped` */
+  final val printTypedFieldSeparator = "\u0000"
+
   /**
    * A `TPrint` for a type already rendered as a string.
    *
    * On Scala 3, the Ammonite compiler phase renders the types of the values the REPL prints
    * itself, and passes them to `Internal.printTyped`, that hands one of these to
-   * `Internal.print`.
+   * `Internal.print`. For named tuples, `namedTupleFields` has the names of their fields.
    */
-  final class RenderedType[T](val tpe: String) extends pprint.TPrint[T] {
+  final class RenderedType[T](val tpe: String, val namedTupleFields: List[String])
+      extends pprint.TPrint[T] {
     def render(implicit tpc: pprint.TPrintColors): fansi.Str =
       colorType(tpe, tpc.typeColor)
   }
@@ -141,9 +145,40 @@ object FullReplAPI {
 
         val rhs = custom match {
           case None =>
-            pprinter().tokenize(
-              value,
-              height = pprinter().defaultHeight - prefix.completedLineCount,
+            val printer = pprinter()
+            val namedTupleFields = implicitly[pprint.TPrint[T]] match {
+              case r: FullReplAPI.RenderedType[_] => r.namedTupleFields
+              case _ => Nil
+            }
+            val value0 = value
+            val printer0 = value0 match {
+              case p: Product if namedTupleFields.nonEmpty &&
+                  p.productArity == namedTupleFields.length =>
+                // Named tuples are plain tuples at runtime, so pprint can't know
+                // their field names: we print them ourselves, like case class fields
+                val handler: PartialFunction[Any, pprint.Tree] = {
+                  case v if v.asInstanceOf[AnyRef] eq p.asInstanceOf[AnyRef] =>
+                    pprint.Tree.Apply(
+                      "",
+                      namedTupleFields.iterator.zip(p.productIterator).map {
+                        case (name, elem) =>
+                          pprint.Tree.KeyValue(
+                            name,
+                            printer.treeify(
+                              elem,
+                              printer.defaultEscapeUnicode,
+                              printer.defaultShowFieldNames
+                            )
+                          )
+                      }
+                    )
+                }
+                printer.copy(additionalHandlers = handler.orElse(printer.additionalHandlers))
+              case _ => printer
+            }
+            printer0.tokenize(
+              value0,
+              height = printer0.defaultHeight - prefix.completedLineCount,
               initialOffset = prefix.lastLineLength
             ).toStream
           case Some(s) => Seq(pprinter().colorLiteral(s))
@@ -158,18 +193,23 @@ object FullReplAPI {
      *
      * Called by the code the REPL generates on Scala 3, where the Ammonite compiler phase
      * replaces `tpe` (left empty in the generated code) by the type of `value` rendered by
-     * the compiler. This delegates to `print`.
+     * the compiler, and `namedTupleFields` by the names of its fields (separated by
+     * `printTypedFieldSeparator`) if it's a named tuple. This delegates to `print`.
      */
     def printTyped[T](
         value: => T,
         ident: String,
         custom: Option[String],
-        tpe: String
+        tpe: String,
+        namedTupleFields: String
     )(implicit
         tcolors: pprint.TPrintColors,
         classTagT: ClassTag[T] = null
     ): Iterator[String] = {
-      val tprint = new FullReplAPI.RenderedType[T](tpe)
+      val fieldNames =
+        if (namedTupleFields.isEmpty) Nil
+        else namedTupleFields.split(FullReplAPI.printTypedFieldSeparator, -1).toList
+      val tprint = new FullReplAPI.RenderedType[T](tpe, fieldNames)
       print(value, ident, custom)(tprint, tcolors, classTagT)
     }
 

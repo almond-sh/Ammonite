@@ -130,8 +130,9 @@ class Preprocessor(
   private def Processor(cond: PartialFunction[(String, String, untpd.Tree), Expanded]) =
     (code: String, name: String, tree: untpd.Tree) => cond.lift(name, code, tree)
 
-  // The empty string passed to printTyped is replaced by AmmonitePhase,
-  // with the type of ident rendered by the compiler (see ResultTypes).
+  // The two empty strings passed to printTyped are replaced by AmmonitePhase,
+  // with the type of ident rendered by the compiler, and the names of its fields
+  // if it's a named tuple (see ResultTypes).
   private def pprintSignature(ident: String, customMsg: Option[String]): String =
     val customCode = customMsg.fold("_root_.scala.None")(x => s"""_root_.scala.Some("$x")""")
     s"""
@@ -140,7 +141,7 @@ class Preprocessor(
           .ReplBridge
           .value
           .Internal
-          .printTyped($ident, ${Util.literalize(ident)}, $customCode, "")
+          .printTyped($ident, ${Util.literalize(ident)}, $customCode, "", "")
     """
   private def definedStr(definitionLabel: String, name: String) =
     s"""
