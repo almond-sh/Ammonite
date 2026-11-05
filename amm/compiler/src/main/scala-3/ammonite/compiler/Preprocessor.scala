@@ -202,6 +202,10 @@ class Preprocessor(
       }
 
   private val ObjectDef = DefProc("object"){case m: untpd.ModuleDef => m.name}
+  private val EnumDef = DefProc("enum"){
+    case m: untpd.TypeDef if m.isClassDef && m.mods.flags.is(Flags.Enum) =>
+      m.name
+  }
   private val ClassDef = DefProc("class"){
     case m: untpd.TypeDef if m.isClassDef && !m.mods.flags.is(Flags.Trait) =>
       m.name
@@ -351,7 +355,7 @@ class Preprocessor(
   }
 
   private val decls = Seq[(String, String, untpd.Tree) => Option[Expanded]](
-    ObjectDef, ClassDef, TraitDef, DefDef, ExtDef, TypeDef, VarDef, PatDef, Import, Export,
+    ObjectDef, EnumDef, ClassDef, TraitDef, DefDef, ExtDef, TypeDef, VarDef, PatDef, Import, Export,
     Expr
   )
 

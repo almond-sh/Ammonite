@@ -722,6 +722,23 @@ object AdvancedTests extends TestSuite {
           res13: Int = 7
         """)
     }
+    test("enums") {
+      if (scala2) "N/A"
+      else
+        check.session("""
+          @ enum Color { case Red, Green }
+          defined enum Color
+
+          @ Color.values.toList
+          res1: List[Color] = List(Red, Green)
+
+          @ enum Planet(val mass: Double) { case Earth extends Planet(5.97e24) }
+          defined enum Planet
+
+          @ Planet.Earth.mass
+          res3: Double = 5.97E24
+        """)
+    }
     test("output-directory") {
       val dir = os.temp.dir(prefix = "amm-output-dir-test")
       val predef0 =
