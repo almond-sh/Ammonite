@@ -45,6 +45,17 @@ object ScriptTests extends TestSuite {
             r: Left[String, Nothing] = ${Print.Left(value = "\"asd\"")}
             """)
         }
+        test("languageImports") {
+          if (check.scala2) "N/A in Scala 2"
+          else check.session(s"""
+            @ import os._
+
+            @ repl.load.exec(($printedScriptPath/"LanguageImports.sc").toNIO)
+
+            @ val r = res
+            r: Int = 0
+            """)
+        }
         test("annotation") {
           check.session(s"""
             @ import os._
@@ -229,6 +240,17 @@ object ScriptTests extends TestSuite {
             r: Left[String, Nothing] = ${Print.Left(value = "\"asd\"")}
             """)
 
+        }
+        test("languageImports") {
+          if (check.scala2) "N/A in Scala 2"
+          else check.session(s"""
+            @ import os._
+
+            @ interp.load.module(($printedScriptPath/"LanguageImports.sc").toNIO)
+
+            @ val r = res
+            r: Int = 0
+            """)
         }
         test("annotation") {
 

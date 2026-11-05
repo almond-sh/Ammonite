@@ -128,6 +128,8 @@ class Compiler(
     ictx
 
   private var userCodeNestingLevel = -1
+  // where the user code starts in the code we compile
+  private var userCodeOffset = 0
 
   // Originally adapted from
   // https://github.com/lampepfl/dotty/blob/3.0.0-M3/
@@ -138,7 +140,7 @@ class Compiler(
         CompilerHelper.frontEndPhases ++
         List(
           List(semanticdb.AmmoniteSemanticDB.extractSemanticInfo),
-          List(new AmmonitePhase(userCodeNestingLevel, userCodeNestingLevel == 2)),
+          List(new AmmonitePhase(userCodeNestingLevel, userCodeNestingLevel == 2, userCodeOffset)),
           List(new PostTyper)
         )
 
@@ -159,6 +161,7 @@ class Compiler(
     // println(s"Compiling\n${new String(src, StandardCharsets.UTF_8)}\n")
 
     self.userCodeNestingLevel = userCodeNestingLevel
+    self.userCodeOffset = importsLen
 
     val reporter0 = reporter match {
       case None =>

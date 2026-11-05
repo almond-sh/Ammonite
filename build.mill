@@ -212,14 +212,16 @@ val compilerInternalDirs: Seq[CompilerInternalDir] = {
       sv => isScala3(sv) && Version(sv) >= Version("3.4.2") && Version(sv) < Version("3.10.0")
     ),
     // GivenNames: desugar.inventGivenOrExtensionName was renamed to inventGivenName in 3.5.0
+    // ExperimentalWrappers: top-level experimental language imports make the compiler mark the
+    // top-level definitions @experimental since 3.5.0, we have to do it ourselves before that
     CompilerInternalDir(
       "scala-3.0.0-3.4",
-      Seq("GivenNames"),
+      Seq("GivenNames", "ExperimentalWrappers"),
       sv => isScala3(sv) && Version(sv) < Version("3.5.0")
     ),
     CompilerInternalDir(
       "scala-3.5.0+",
-      Seq("GivenNames"),
+      Seq("GivenNames", "ExperimentalWrappers"),
       sv => isScala3(sv) && Version(sv) >= Version("3.5.0")
     ),
     // MessageRenderer and TermRefNames: 3.8.2 dropped MessageRendering.inlinePosStack, and

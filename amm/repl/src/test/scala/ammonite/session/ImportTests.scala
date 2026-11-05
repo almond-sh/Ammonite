@@ -316,6 +316,28 @@ object ImportTests extends TestSuite {
         }
       }
     }
+    test("rootPrefixed") {
+      check.session("""
+        @ import _root_.scala.util.Try
+        import _root_.scala.util.Try
+
+        @ val t = Try(2).get
+        t: Int = 2
+
+        @ Try(3).get
+        res2: Int = 3
+      """)
+    }
+    test("inBlock") {
+      check.session("""
+        @ {
+        @   import scala.util.Try
+        @   val n = Try(2).get
+        @ }
+        import scala.util.Try
+        n: Int = 2
+      """)
+    }
     test("collapsing") {
       check.session("""
         @ object Foo{ val bar = 1 }
@@ -469,6 +491,86 @@ object ImportTests extends TestSuite {
 
         @ ::
       """)
+    }
+    test("languageImports") {
+      // Language imports go at the top level of the generated code, and stay in effect in the
+      // commands that follow. saferExceptions and pureFunctions are experimental in all the
+      // Scala 3 versions we support, and pureFunctions can only be imported at the top level.
+      test("experimental") {
+        if (check.scala2) "N/A in Scala 2"
+        else check.session("""
+          @ import scala.language.experimental.saferExceptions
+          import scala.language.experimental.saferExceptions
+
+          @ def f(n: Int): Int throws Exception = if (n > 0) n else throw new Exception("neg")
+          defined function f
+
+          @ val n = try f(-1) catch { case _: Exception => 0 }
+          n: Int = 0
+        """)
+      }
+      test("topLevelOnly") {
+        if (check.scala2) "N/A in Scala 2"
+        else check.session("""
+          @ import language.experimental.pureFunctions
+          import language.experimental.pureFunctions
+
+          @ val g: Int -> Int = _ + 1
+          g: Int => Int = ?
+
+          @ g(2)
+          res2: Int = 3
+        """)
+      }
+      test("withOtherCode") {
+        if (check.scala2) "N/A in Scala 2"
+        else check.session("""
+          @ {
+          @   val k = 2
+          @   import scala.language.experimental.{saferExceptions, pureFunctions}
+          @   def f(n: Int): Int throws Exception = n * k
+          @ }
+          k: Int = 2
+          import scala.language.experimental.{saferExceptions, pureFunctions}
+          defined function f
+
+          @ val g: Int -> Int = n => try f(n) catch { case _: Exception => 0 }
+          g: Int => Int = ?
+
+          @ g(2)
+          res2: Int = 4
+        """)
+      }
+      test("mixed") {
+        if (check.scala2) "N/A in Scala 2"
+        else check.session("""
+          @ import scala.util.Try, scala.language.experimental.saferExceptions, scala.util.Success
+          import scala.util.Try, scala.language.experimental.saferExceptions, scala.util.Success
+
+          @ def f(n: Int): Int throws Exception = n
+          defined function f
+
+          @ val n = try f(2) catch { case _: Exception => 0 }
+          n: Int = 2
+
+          @ Success(Try(n))
+          res3: Success[Try[Int]] = Success(value = Success(value = 2))
+        """)
+      }
+      test("sourceVersion") {
+        // only applies to the command it's in - a unit can't have more than one
+        if (check.scala2) "N/A in Scala 2"
+        else check.session("""
+          @ import scala.language.`3.0-migration`
+          import scala.language.`3.0-migration`
+
+          @ import scala.language.`3.0`
+          import scala.language.`3.0`
+
+          @ val n = 2
+          n: Int = 2
+        """)
+      }
     }
   }
 }

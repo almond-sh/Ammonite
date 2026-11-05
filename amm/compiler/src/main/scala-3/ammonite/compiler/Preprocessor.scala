@@ -9,6 +9,7 @@ import ammonite.util.Util.CodeSource
 import pprint.Util
 
 import dotty.tools.dotc
+import dotc.CompilationUnit
 import dotc.ast.desugar
 import dotc.ast.untpd
 import dotc.core.Contexts._
@@ -23,14 +24,23 @@ class Preprocessor(
 
   // FIXME Quite some duplication with DefaultProcessor for Scala 2.x
 
-  private case class Expanded(code: String, printer: Seq[String])
+  /**
+   * @param hoisted the language imports of the code, removed from `code`, that have to go
+   *                at the top level of the generated code (see [[LanguageImports]])
+   */
+  private case class Expanded(code: String, printer: Seq[String], hoisted: Seq[String] = Nil)
 
   private def parse(source: String): Either[Seq[String], List[untpd.Tree]] = {
     val reporter = Compiler.newStoreReporter()
     val sourceFile = SourceFile.virtual("foo", source)
-    val parseCtx = ctx.fresh.setReporter(reporter).withSource(sourceFile)
+    // A compilation unit of its own, that parsing language imports can write to
+    // (source version, capture checking, ...)
+    val parseCtx0 = ctx.fresh.setReporter(reporter)
+    val parseCtx = parseCtx0
+      .setCompilationUnit(CompilationUnit(sourceFile, mustExist = false)(using parseCtx0))
+      .withSource(sourceFile)
     val parser = CompilerInternals.parserMaker.parser(sourceFile)(using parseCtx)
-    val stats = parser.blockStatSeq()
+    val stats = parser.blockStatSeq(outermost = true)
     parser.accept(Tokens.EOF)
     if (reporter.hasErrors) {
       val errorsStr = reporter
@@ -59,12 +69,19 @@ class Preprocessor(
     // println(s"transformOrNull(${stmts.toSeq})")
 
     expandStatements(stmts, resultIndex, skipEmpty).map {
-      case Expanded(code, printer) =>
+      case Expanded(code, printer, hoisted) =>
         val userCode = leadingSpaces + code
+        // Language imports go at the top level of the generated code, rather than in the
+        // wrapper the code wrapper puts the other ones in
+        val (languageImports, otherImports) =
+          imports.value.partition(LanguageImports.isPersistentLanguageImport)
+        val topLevelCode =
+          Imports(languageImports).toString +
+            hoisted.map(_ + System.lineSeparator()).mkString
         val (wrappedCode, importsLength, userCodeNestingLevel) = wrapCode(
           codeSource, indexedWrapper, userCode,
           printerTemplate(printer.mkString(", ")),
-          imports, extraCode, markScript, codeWrapper
+          Imports(otherImports), topLevelCode, extraCode, markScript, codeWrapper
         )
         IPreprocessor.Output(
           wrappedCode,
@@ -98,6 +115,7 @@ class Preprocessor(
     code: String,
     printCode: String,
     imports: Imports,
+    topLevelCode: String,
     extraCode: String,
     markScript: Boolean,
     codeWrapper: CodeWrapper
@@ -108,8 +126,18 @@ class Preprocessor(
     val extraCode0 =
       if (markScript) extraCode + "/*</generated>*/"
       else extraCode
-    val (topWrapper, bottomWrapper, userCodeNestingLevel) =
+    val (topWrapper1, bottomWrapper, userCodeNestingLevel) =
       codeWrapper(code, codeSource, imports, printCode, indexedWrapperName, extraCode0)
+    // The code wrappers start with the package clauses, which have to stay first
+    val topWrapper =
+      if (topLevelCode.isEmpty) topWrapper1
+      else {
+        val packageDirectives = CodeWrapper.packageDirectives(codeSource.pkgName)
+        if (topWrapper1.startsWith(packageDirectives))
+          packageDirectives + topLevelCode + topWrapper1.stripPrefix(packageDirectives)
+        else
+          topLevelCode + topWrapper1
+      }
     val (topWrapper0, bottomWrapper0) =
       if (markScript) (topWrapper + "/*<script>*/", "/*</script>*/ /*<generated>*/" + bottomWrapper)
       else (topWrapper, bottomWrapper)
@@ -249,7 +277,7 @@ class Preprocessor(
               .ReplBridge
               .value
               .Internal
-              .printImport(${Util.literalize(body)})
+              .printImport(${Util.literalize(body.trim)})
         """
       ))
   }
@@ -266,6 +294,45 @@ class Preprocessor(
         expandedCode,
         if (isPrivate(tree)) Nil else Seq(pprint(name))
       )
+  }
+
+  /**
+   * Removes the language imports of `trees`, the trees of `code`, from `code`, and renders them
+   * so that they can be put at the top level of the generated code.
+   *
+   * The code of the imports is blanked out rather than removed, so that the positions of the
+   * code that follows, in error messages in particular, don't change.
+   */
+  private def hoistLanguageImports(code: String, trees: List[untpd.Tree]): (String, Seq[String]) = {
+    given Context = ctx
+    val (languageImports, others) = trees.partition(LanguageImports.isLanguageImport)
+    if (languageImports.isEmpty) (code, Nil)
+    else {
+      // From the expression of the import, which leaves the `import` keyword out of the
+      // first of the imports of `import a.b, c.d`, to its last selector
+      def importCode(tree: untpd.Tree): String =
+        tree match {
+          case i: untpd.Import => code.substring(i.expr.span.start, i.span.end)
+          case _ => sys.error(s"Not an import: $tree") // can't happen
+        }
+      val hoisted = languageImports.map("import " + importCode(_))
+      val blanked = code.map(c => if (c == '\n' || c == '\r') c else ' ')
+      val updatedCode =
+        // An empty statement where the import was, rather than just whitespace, so that the
+        // code that follows the import doesn't get to be the first thing in the wrapper body,
+        // whose indentation would be taken as the one of the body.
+        if (others.isEmpty) ";" + blanked.drop(1)
+        else {
+          // only in the import clauses mixing language imports and other ones, like
+          // `import scala.language.experimental.captureChecking, scala.util.Try`
+          val kept = "import " + others.map(importCode).mkString(", ")
+          if (code.take(kept.length).exists(c => c == '\n' || c == '\r'))
+            kept + blanked.filter(c => c == '\n' || c == '\r')
+          else
+            kept + blanked.drop(kept.length)
+        }
+      (updatedCode, hoisted)
+    }
   }
 
   private val decls = Seq[(String, String, untpd.Tree) => Option[Expanded]](
@@ -296,7 +363,8 @@ class Preprocessor(
                 sys.error(s"Don't know how to handle ${t.getClass}: $t")
               }
             }
-            trees match {
+            val (updatedCode, hoisted) = hoistLanguageImports(code, trees)
+            val expanded = trees match {
               case Seq(tree) => handleTree(tree)
 
               // This handles the multi-import case `import a.b, c.d`
@@ -309,17 +377,21 @@ class Preprocessor(
                 val printers = for {
                   tree <- trees
                   if tree.isInstanceOf[untpd.ValDef]
-                  Expanded(_, printers) = handleTree(tree)
+                  Expanded(_, printers, _) = handleTree(tree)
                   printer <- printers
                 } yield printer
 
                 Expanded(code, printers)
             }
+            // The trees whose code we hoisted the language imports of only consist of imports,
+            // whose code `expanded` keeps as is
+            if (hoisted.isEmpty) expanded
+            else expanded.copy(code = updatedCode, hoisted = hoisted)
       }
 
       val expanded = allDecls match{
         case Seq(first, rest@_*) =>
-          val allDeclsWithComments = Expanded(first.code, first.printer) +: rest
+          val allDeclsWithComments = first +: rest
           allDeclsWithComments.reduce { (a, b) =>
             Expanded(
               // We do not need to separate the code with our own semi-colons
@@ -327,7 +399,8 @@ class Preprocessor(
               // it's own trailing newline/semicolons as a result of the
               // initial split
               a.code + b.code,
-              a.printer ++ b.printer
+              a.printer ++ b.printer,
+              a.hoisted ++ b.hoisted
             )
           }
         case Nil => Expanded("", Nil)

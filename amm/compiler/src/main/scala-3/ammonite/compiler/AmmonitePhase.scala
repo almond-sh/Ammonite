@@ -11,7 +11,7 @@ import dotc.core.Flags
 import dotc.core.Contexts._
 import dotc.core.Names.Name
 import dotc.core.Phases.Phase
-import dotc.core.Symbols.{NoSymbol, Symbol, newSymbol}
+import dotc.core.Symbols.{NoSymbol, Symbol, defn, newSymbol}
 import dotc.core.Types.{
   ExprType,
   MethodType,
@@ -26,7 +26,8 @@ import scala.collection.mutable
 
 class AmmonitePhase(
   userCodeNestingLevel: => Int,
-  needsUsedEarlierDefinitions: => Boolean
+  needsUsedEarlierDefinitions: => Boolean,
+  userCodeOffset: => Int
 ) extends Phase:
   import tpd._
 
@@ -55,7 +56,11 @@ class AmmonitePhase(
       ImportData(AmmName(fromName), AmmName(toName), importString, importType)
     }
 
-    open.toVector.sortBy(x => Util.encodeScalaSourcePath(x.prefix))
+    open
+      .toVector
+      // Source version imports only apply to the compilation unit they're in
+      .filter(!LanguageImports.isSourceVersionImport(_))
+      .sortBy(x => Util.encodeScalaSourcePath(x.prefix))
 
   def usedEarlierDefinitions: Seq[String] =
     usedEarlierDefinitions0.toList.distinct
@@ -104,8 +109,12 @@ class AmmonitePhase(
         rec(expr).reverse.unzip
       }
 
-      val headFullPath = symbolHead.fullName.decode.toString.split('.')
-        .map(n => if (n.endsWith("$")) n.stripSuffix("$") else n) // meh
+      val headFullPath =
+        // `import _root_.a.b`
+        if (symbolHead == defn.RootPackage || symbolHead == defn.RootClass) Array.empty[String]
+        else
+          symbolHead.fullName.decode.toString.split('.')
+            .map(n => if (n.endsWith("$")) n.stripSuffix("$") else n) // meh
       // prefix package imports with `_root_` to try and stop random
       // variables from interfering with them. If someone defines a value
       // called `_root_`, this will still break, but that's their problem
@@ -270,6 +279,14 @@ class AmmonitePhase(
       traverser.traverse(tree)
   }
 
+  private def isLanguageImport(i: tpd.Import)(using Context): Boolean =
+    val sym = i.expr.symbol
+    sym.exists && {
+      // like scala.language$.experimental
+      val name = sym.fullName.decode.toString.split('.').map(_.stripSuffix("$")).toSeq
+      name == Seq("scala", "language") || name == Seq("scala", "language", "experimental")
+    }
+
   private def unpkg(tree: tpd.Tree): List[tpd.Tree] =
     tree match {
       case PackageDef(_, elems) => elems.flatMap(unpkg)
@@ -295,8 +312,20 @@ class AmmonitePhase(
       updateUsedEarlierDefinitions(wrapperSym, stats)
     }
 
+    // The language imports Preprocessor hoisted at the top level of the code, which are those
+    // of the user code, and those of the previous commands, that we keep passing along
+    elems.foreach {
+      case i: Import if isLanguageImport(i) => processImport(i)
+      case _ =>
+    }
+
+    // Imports from the generated code that ended up next to the user code (see
+    // ExperimentalWrappers) are those of the previous commands, not new ones
+    def isUserCode(t: tpd.Tree) = !t.span.exists || t.span.start >= userCodeOffset
+
     stats.foreach {
-      case i: Import => processImport(i)
+      case i: Import if isUserCode(i) => processImport(i)
+      case _: Import =>
       case t: tpd.DefDef => processTree(t)
       case t: tpd.ValDef => processTree(t)
       case t: tpd.TypeDef => processTree(t)

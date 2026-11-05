@@ -27,7 +27,7 @@ class Parsers extends IParser {
   //   compiler/src/dotty/tools/repl/ParseResult.scala/#L115-L120
   private def parseStats(using Context): List[untpd.Tree] = {
     val parser = CompilerInternals.parserMaker.parser(ctx.source)
-    val stats = parser.blockStatSeq()
+    val stats = parser.blockStatSeq(outermost = true)
     parser.accept(Tokens.EOF)
     stats
   }
