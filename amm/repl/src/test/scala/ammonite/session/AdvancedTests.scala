@@ -151,6 +151,22 @@ object AdvancedTests extends TestSuite {
           @ assert(ammStackTrace.forall(_.contains("cmd3.sc")))
         """)
     }
+    test("macroDefinedInObject") {
+      // With the class-based wrapper, code consisting only of object definitions
+      // is wrapped in a singleton, so that macro implementations are static
+      if (!check.scala2)
+        check.session("""
+          @ object Mac {
+          @   import scala.quoted.*
+          @   inline def twice(inline x: Int): Int = ${ impl('x) }
+          @   def impl(x: Expr[Int])(using Quotes): Expr[Int] = '{ $x * 2 }
+          @ }
+          defined object Mac
+
+          @ Mac.twice(21)
+          res1: Int = 42
+        """)
+    }
     test("typeScope") {
       // TPrint issue in Scala 3?
       val cmBufferType =

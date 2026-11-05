@@ -74,14 +74,35 @@ object Scripts {
           )
 
         case ammonite.compiler.CodeClassWrapper =>
-          val outer = interp
+          // Go through the wrapper companion module rather than through a static
+          // `instance()` forwarder on the wrapper class: Scala 3 doesn't generate
+          // such forwarders there.
+          val wrapperModule = interp
             .evalClassloader
-            .loadClass(routeClsName)
+            .loadClass(routeClsName + "$")
+            .getField("MODULE$")
+            .get(null)
+          val outer = wrapperModule
+            .getClass
             .getMethod("instance")
-            .invoke(null)
+            .invoke(wrapperModule)
+
+          // When the script only consists of object definitions, `outer` is a singleton
+          // (see CodeClassWrapper), and Scala 3 makes `$routes` a static module with no
+          // accessor method on it.
+          val routes =
+            try outer.getClass.getMethod("$routes").invoke(outer)
+            catch {
+              case _: NoSuchMethodException =>
+                interp
+                  .evalClassloader
+                  .loadClass(outer.getClass.getName + "$routes$")
+                  .getField("MODULE$")
+                  .get(null)
+            }
 
           Option(
-            outer.getClass.getMethod("$routes").invoke(outer)
+            routes
               .asInstanceOf[() => mainargs.ParserForMethods[Any]]
               .apply()
           )
