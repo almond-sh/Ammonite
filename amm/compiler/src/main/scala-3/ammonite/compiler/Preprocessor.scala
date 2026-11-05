@@ -75,9 +75,16 @@ class Preprocessor(
         // wrapper the code wrapper puts the other ones in
         val (languageImports, otherImports) =
           imports.value.partition(LanguageImports.isPersistentLanguageImport)
+        // The language imports of the previous cells are marked, so that the compiler doesn't
+        // report again the warnings they get in each later cell, like deprecation ones
+        // (see Compiler.carriedOverSectionStart)
+        val carriedOver =
+          if (languageImports.isEmpty) ""
+          else
+            Compiler.carriedOverSectionStart + Imports(languageImports).toString +
+              Compiler.carriedOverSectionEnd + System.lineSeparator()
         val topLevelCode =
-          Imports(languageImports).toString +
-            hoisted.map(_ + System.lineSeparator()).mkString
+          carriedOver + hoisted.map(_ + System.lineSeparator()).mkString
         val (wrappedCode, importsLength, userCodeNestingLevel) = wrapCode(
           codeSource, indexedWrapper, userCode,
           printerTemplate(printer.mkString(", ")),

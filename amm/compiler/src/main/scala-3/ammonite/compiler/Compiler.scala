@@ -175,12 +175,30 @@ class Compiler(
      * E230 is IllegalIdentifierID, matched by number as it doesn't exist in Scala 3.3 (whose
      * error numbers stop below 230), and error numbers are never reassigned.
      */
+    def isE230GeneratedCodeWarning(diag: reporting.Diagnostic): Boolean =
+      diag.msg.errorId.errorNumber == 230 &&
+        (diag.pos.point < importsLen || diag.pos.point > userCodeEnd)
+    // The language imports of the previous cells, that the preprocessor puts in each new one
+    val carriedOverSections = PositionOffsetConversion.sections(
+      new String(src, "UTF-8"),
+      Compiler.carriedOverSectionStart,
+      Compiler.carriedOverSectionEnd
+    )
+    /*
+     * Whether a diagnostic is a warning about the language imports of the previous cells, like
+     * the deprecation warning of `import scala.language.experimental.namedTuples` since Scala
+     * 3.8. It was reported in the cell the import was typed in, there's no need to report it
+     * again in every later one.
+     */
+    def isCarriedOverImportWarning(diag: reporting.Diagnostic): Boolean =
+      carriedOverSections.exists { case (start, end) =>
+        start <= diag.pos.point && diag.pos.point < end
+      }
     def isGeneratedCodeWarning(diag: reporting.Diagnostic, sourceFile: SourceFile): Boolean =
       diag.level == dotc.interfaces.Diagnostic.WARNING &&
-        diag.msg.errorId.errorNumber == 230 &&
         diag.pos.exists &&
         diag.pos.source == sourceFile &&
-        (diag.pos.point < importsLen || diag.pos.point > userCodeEnd)
+        (isE230GeneratedCodeWarning(diag) || isCarriedOverImportWarning(diag))
     // set below, before compiling anything
     var sourceFile0: SourceFile = null
 
@@ -523,6 +541,13 @@ class Compiler(
   }
 
 object Compiler:
+
+  /**
+   * Comments delimiting the language imports of the previous cells that the preprocessor puts
+   * at the top level of each cell, whose warnings we don't report
+   */
+  val carriedOverSectionStart = "/*<amm-carried-over>*/"
+  val carriedOverSectionEnd = "/*</amm-carried-over>*/"
 
   /** Create empty outer store reporter */
   def newStoreReporter(): reporting.StoreReporter =
