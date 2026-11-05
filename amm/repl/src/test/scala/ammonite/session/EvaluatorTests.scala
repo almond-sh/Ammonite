@@ -102,24 +102,98 @@ object EvaluatorTests extends TestSuite {
       """)
     }
     test("types") {
-      val aliasedType =
-        if (check.scala2) "Funky" else "Array[Array[String]]"
-      val aliasedType2 =
-        if (check.scala2) "Funky2[Int]" else "Array[Array[Int]]"
-      check.session(s"""
+      check.session("""
         @ type Funky = Array[Array[String]]
         defined type Funky
 
         @ val arr: Funky = Array(Array("Hello!"))
-        arr: $aliasedType = Array(Array("Hello!"))
+        arr: Funky = Array(Array("Hello!"))
 
         @ type Funky2[T] = Array[Array[T]]
         defined type Funky2
 
         @ val arr: Funky2[Int] = Array(Array(123))
-        arr: $aliasedType2 = Array(Array(123))
+        arr: Funky2[Int] = Array(Array(123))
       """)
     }
+    test("scala3Types") {
+      // On Scala 3, result types are rendered by the compiler (see ResultTypes in amm.compiler)
+      if (check.scala2) "N/A"
+      else check.session("""
+        @ val u: Int | String = 2
+        u: Int | String = 2
+
+        @ val i: Comparable[String] & CharSequence = "x"
+        i: Comparable[String] & CharSequence = "x"
+
+        @ val s: "lit" = "lit"
+        s: "lit" = "lit"
+
+        @ object O { opaque type Id = Int; def mk(i: Int): Id = i }
+        defined object O
+
+        @ O.mk(2)
+        res4: O.Id = 2
+
+        @ type M[X] = X match { case Int => String; case String => Int }
+        defined type M
+
+        @ def m[X](x: X): M[X] = ???
+        defined function m
+
+        @ lazy val mi = m(2)
+        mi: String = <lazy>
+
+        @ type TL = [X] =>> Map[X, X]
+        defined type TL
+
+        @ val tl: TL[Int] = Map(1 -> 2)
+        tl: TL[Int] = Map(1 -> 2)
+
+        @ class Foo { class Bar { override def toString = "bar" }; val b = new Bar }
+        defined class Foo
+
+        @ val foo = new Foo
+        foo: Foo = ?
+
+        @ foo.b
+        res12: foo.Bar = bar
+
+        @ object Outer { case class In(i: Int); object Deep { case class D() } }
+        defined object Outer
+
+        @ Outer.In(2)
+        res14: Outer.In = In(i = 2)
+
+        @ Outer.Deep.D()
+        res15: Outer.Deep.D = D()
+
+        @ given Int = 2
+        given_Int: Int = <given>
+
+        @ extension (i: Int) def twice = (i * 2, List(i))
+        defined extension methods
+
+        @ 2.twice
+        res18: (Int, List[Int]) = (4, List(2))
+      """)
+    }
+
+    test("namedTuples") {
+      // named tuples are standard since Scala 3.7
+      if (check.scala2 || check.scalaVersion.startsWith("3.3.")) "N/A"
+      else check.session("""
+        @ val t = (name = "a", age = 2)
+        t: (name : String, age : Int) = ("a", 2)
+
+        @ val single = (x = 1)
+        single: (x : Int) = Tuple1(_1 = 1)
+
+        @ List((a = 1, b = "x"))
+        res2: List[(a : Int, b : String)] = List((1, "x"))
+      """)
+    }
+
     test("library") {
       // x and y pprinted value is test("non") - empty iterator' up to 2.12.6,
       // '<iterator>' since 2.12.7, hence the '?' (don't check the value)
@@ -136,13 +210,7 @@ object EvaluatorTests extends TestSuite {
     }
 
     test("classes") {
-      val objWrapperPrefix =
-        if (check.scala2) "" else "ammonite.$sess.cmd2."
-      // With the class-based wrapper, a command consisting only of object definitions
-      // gets wrapped in a singleton (see CodeClassWrapper)
-      val classWrapperPrefix =
-        if (check.scala2) "" else "ammonite.$sess.cmd2.Helper."
-      def session(prefix: String) = s"""
+      check.session("""
         @ class C{override def toString() = "Ceee"}
         defined class C
 
@@ -153,7 +221,7 @@ object EvaluatorTests extends TestSuite {
         defined object CO
 
         @ CO
-        res3: ${prefix}CO.type = CO
+        res3: CO.type = CO
 
         @ case class CC()
         defined class CC
@@ -162,7 +230,7 @@ object EvaluatorTests extends TestSuite {
         res5: CC = CC()
 
         @ CO
-        res6: ${prefix}CO.type = CO
+        res6: CO.type = CO
 
         @ case class CO()
         defined class CO
@@ -174,11 +242,7 @@ object EvaluatorTests extends TestSuite {
 
         @ CO == res3
         res10: Boolean = false
-      """
-      check.session(
-        session(objWrapperPrefix),
-        session(classWrapperPrefix)
-      )
+      """)
 
       // there used to be a
       //     @ CO
