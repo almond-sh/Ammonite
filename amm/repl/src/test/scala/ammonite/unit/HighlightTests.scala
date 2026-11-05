@@ -28,6 +28,10 @@ object HighlightTests extends TestSuite {
   }
   val isScala2 = scalaVersion.startsWith("2.")
   val isScala3_01 = scalaVersion.startsWith("3.0.") || scalaVersion.startsWith("3.1.")
+  val isScala3_10Plus = !isScala2 && {
+    val Array(_, minor) = scalaVersion.split('.').take(2)
+    minor.toInt >= 10
+  }
   val tests = Tests {
     println("HighlightTests")
     test("highlighting") {
@@ -62,6 +66,13 @@ object HighlightTests extends TestSuite {
           else "x: <G|y.type>"
         check("x: y.type", expected)
       }
+      test("qualifiedType") - {
+        // Scala 2 colors the whole path, Scala 3 its last segment, like dotty
+        val expected =
+          if (isScala2) "<Y|def> f(x: <G|java.io.File>) = x"
+          else "<Y|def> f(x: java.io.<G|File>) = x"
+        check("def f(x: java.io.File) = x", expected)
+      }
       test("literal") - check("1", "<G|1>")
       test("expressions") - check(
         "val (x, y) = 1 + 2 + 3",
@@ -71,11 +82,48 @@ object HighlightTests extends TestSuite {
         """(s"hello ${world + 1}")""",
         """(<G|s"hello >${world + <G|1>}<G|">)"""
       )
-      test("runOff") - {
-        val expected =
-          if (isScala2) """(<G|1> + <G|"Hello...>"""
-          else """(<G|1> + "Hello...""" // Dotty highlighter doesn't color open strings
-        check("""(1 + "Hello...""", expected)
+      test("runOff") - check("""(1 + "Hello...""", """(<G|1> + <G|"Hello...>""")
+      test("openStrings") {
+        test("multiLine") - check("x + \"\"\"a\nb", "x + <G|\"\"\"a\nb>")
+        test("escapedQuote") - check("\"a\\\"b", "<G|\"a\\\"b>")
+        test("interpolated") - {
+          val expected =
+            if (isScala2) "<G|s\"a\\\">b"
+            else "<G|s\"a\\\"b>"
+          check("s\"a\\\"b", expected)
+        }
+        test("afterIdent") - check("s\"a $x b", "<G|s\"a >$x<G| b>")
+        test("afterBlock") - check("s\"a ${x} b", "<G|s\"a >${x}<G| b>")
+        test("interpolatedMultiLine") - check(
+          "s\"\"\"a ${x} b\nc",
+          "<G|s\"\"\"a >${x}<G| b\nc>"
+        )
+        // Scala 2 gives up highlighting at a single-line literal left unclosed on
+        // a line that isn't the last one, Scala 3 resumes on the next line (fully
+        // since 3.10, whose scanner recovers as if the line ended there)
+        test("nextLine") - {
+          val expected =
+            if (isScala2) "<Y|val> x = \"a\nval y = 2"
+            else if (isScala3_10Plus) "<Y|val> x = <G|\"a>\n<Y|val> y = <G|2>"
+            else "<Y|val> x = <G|\"a>\nval y = <G|2>"
+          check("val x = \"a\nval y = 2", expected)
+        }
+      }
+      test("annotation") {
+        test("args") - check(
+          """@deprecated("a", "b") def f = 1""",
+          """@<G|deprecated>(<G|"a">, <G|"b">) <Y|def> f = <G|1>"""
+        )
+        test("noArgs") - check(
+          "@main def run() = ()",
+          "@<G|main> <Y|def> run() = ()"
+        )
+        test("qualified") - {
+          val expected =
+            if (isScala2) "@<G|scala.transient> <Y|val> x = <G|1>"
+            else "@scala.<G|transient> <Y|val> x = <G|1>"
+          check("@scala.transient val x = 1", expected)
+        }
       }
       test("underscore") - {
         val expected =
