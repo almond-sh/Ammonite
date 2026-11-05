@@ -14,8 +14,6 @@ import dotty.tools.dotc.util.SourcePosition
 /** Ammonite's completions, for the compilers of 3.9.0 and later. */
 object AmmCompletion3_9_0 {
 
-  def maybeBackticked(input: String, hasBackTick: Boolean): Completion =
-    Completion.backtickCompletions(Completion(input, "", Nil), hasBackTick)
   def backtick(completion: Completion): Completion =
     Completion.backtickCompletions(completion, completion.label.startsWith("`"))
 
@@ -43,19 +41,31 @@ object AmmCompletion3_9_0 {
     val prefix = Completion.completionPrefix(path, pos)
     val completer = new DeepCompleter(mode, prefix, pos, path)
 
-    val hasBackTick = prefix.headOption.contains('`')
-
     var extra = List.empty[Completion]
+    var start = pos.span.start - prefix.length
 
     val completions = path match {
       case Select(qual, _) :: _                              => completer.selectionCompletions(qual)
-      case Import(Ident(name), _) :: _
+      case Import(Ident(name), selectors) :: _
         if name.decode.toString == "$ivy" && dependencyCompleteOpt.nonEmpty =>
-        val complete = dependencyCompleteOpt.get
-        val (pos, completions) = complete(prefix)
-        val input0 = prefix.take(pos)
+        // The compiler's completion prefix stops at characters like '.', '-' or ':', which
+        // dependencies are full of - we complete the whole selector up to the cursor instead
+        val selectorStart = selectors.iterator
+          .map(_.span)
+          .filter(span => span.exists && span.start <= pos.span.point)
+          .map(_.start)
+          .maxOption
+          .getOrElse(pos.span.point)
+        val typed =
+          new String(pos.source.content.slice(selectorStart, pos.span.point))
+        val input = typed.stripPrefix("`")
+        val (inputPos, completions) = dependencyCompleteOpt.get(input)
+        val input0 = input.take(inputPos)
+        // Always open a backtick, like the Scala 2 completions do: dependencies need one
+        // most of the time, and the user is likely to have typed it already anyway
         extra = extra ::: completions.distinct.toList
-          .map(s => maybeBackticked(input0 + s, hasBackTick))
+          .map(s => Completion("`" + input0 + s, "", Nil))
+        start = selectorStart
         Map.empty
       case Import(expr, _) :: _                              =>
         completer.directMemberCompletions(expr)
@@ -73,7 +83,7 @@ object AmmCompletion3_9_0 {
     val describedCompletions = extra ++ Completion.describeCompletions(completions).map(backtick)
     val offset = Completion.completionOffset(path)
 
-    (pos.span.start - prefix.length, describedCompletions)
+    (start, describedCompletions)
   }
 
   class DeepCompleter(

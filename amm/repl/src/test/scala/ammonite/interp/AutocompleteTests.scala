@@ -302,8 +302,7 @@ object AutocompleteTests extends TestSuite {
         }
       }
       checking { complete =>
-        if (complete.check.scala2) dependenciesTests(complete)
-        else "Disabled in Scala 3"
+        dependenciesTests(complete)
       }
     }
   }

@@ -55,7 +55,7 @@ class Interpreter(
   def scalaVersion = compilerBuilder.scalaVersion
 
   def dependencyComplete: String => (Int, Seq[String]) =
-    IvyThing.completer(repositories(), verbose = verboseOutput)
+    IvyThing.completer(repositories(), verbose = verboseOutput, scalaVersion = scalaVersion)
 
   /**
    * The options we pass to the compiler, other than class path related and SemanticDB ones

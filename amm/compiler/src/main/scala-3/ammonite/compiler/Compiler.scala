@@ -328,6 +328,21 @@ class Compiler(
     previousImports: String,
     snippet: String
   ): (Int, Seq[String], Seq[String]) = {
+    val res = completeOnce(offset, previousImports, snippet)
+    // Like in Scala 2, complete `import $ivy.`foo` as if its backtick was closed, so that it
+    // parses as an import
+    val isPartialIvyImport = res._2.isEmpty &&
+      snippet.split("\\s+|`").startsWith(Seq("import", "$ivy.")) &&
+      snippet.count(_ == '`') == 1
+    if (isPartialIvyImport) completeOnce(offset, previousImports, snippet + "`")
+    else res
+  }
+
+  private def completeOnce(
+    offset: Int,
+    previousImports: String,
+    snippet: String
+  ): (Int, Seq[String], Seq[String]) = {
 
     val prefix = previousImports + newLine +
       "object AutocompleteWrapper{ val expr: _root_.scala.Unit = {" + newLine
