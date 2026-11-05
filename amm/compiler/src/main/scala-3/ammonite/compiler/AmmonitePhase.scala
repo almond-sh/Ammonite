@@ -12,7 +12,15 @@ import dotc.core.Contexts._
 import dotc.core.Names.Name
 import dotc.core.Phases.Phase
 import dotc.core.Symbols.{NoSymbol, Symbol, newSymbol}
-import dotc.core.Types.{TermRef, Type, TypeTraverser}
+import dotc.core.Types.{
+  ExprType,
+  MethodType,
+  PolyType,
+  TermRef,
+  Type,
+  TypeTraverser,
+  WildcardType
+}
 
 import scala.collection.mutable
 
@@ -138,20 +146,54 @@ class AmmonitePhase(
     def isUnimportableUnlessRenamed(sym: Symbol): Boolean =
       sym eq NoSymbol
 
-    @scala.annotation.tailrec
+    def namedSelectorMatches(sel: untpd.ImportSelector, sym: Symbol): Boolean =
+      !sel.isWildcard && {
+        val from = sel.imported
+        from.name == (if (from.isTerm) sym.name.toTermName else sym.name.toTypeName)
+      }
+
+    /** The type of the bound of a `given T` selector, if any */
+    def selectorBound(sel: untpd.ImportSelector): Type =
+      sel.bound match {
+        case untpd.TypedSplice(t) => t.tpe
+        case t => t.typeOpt
+      }
+
+    // Approximates the type a given provides, so that it can be checked against
+    // the bound of a `given T` selector (type parameters are replaced by wildcards,
+    // using clauses are skipped)
+    def providedType(tpe: Type): Type =
+      tpe match {
+        case pt: PolyType => providedType(pt.instantiate(pt.paramNames.map(_ => WildcardType)))
+        case mt: MethodType => providedType(mt.resultType)
+        case et: ExprType => providedType(et.resultType)
+        case _ => tpe
+      }
+
+    // Follows Scala 3 semantics: `*` (or `_`) imports everything but givens,
+    // `given` imports only givens (and old-style implicits), `given T` only
+    // those conforming to `T`
+    def wildcardImports(sel: untpd.ImportSelector, sym: Symbol): Boolean =
+      if (sel.isGiven)
+        sym.isOneOf(Flags.GivenOrImplicit) && {
+          val bound = selectorBound(sel)
+          !bound.exists ||
+            scala.util.Try(providedType(expr.tpe.memberInfo(sym)) <:< bound).getOrElse(true)
+        }
+      else
+        !sym.is(Flags.Given)
+
     def transformImport(selectors: List[untpd.ImportSelector], sym: Symbol): List[Symbol] =
-      selectors match {
-        case Nil => Nil
-        case sel :: Nil if sel.isWildcard =>
-          if (isUnimportableUnlessRenamed(sym)) Nil
-          else List(sym)
-        case (sel @ untpd.ImportSelector(from, to, _)) :: _
-            if from.name == (if (from.isTerm) sym.name.toTermName else sym.name.toTypeName) =>
+      selectors.find(namedSelectorMatches(_, sym)) match {
+        case Some(sel) =>
           if (isMask(sel)) Nil
           else List(
             newSymbol(sym.owner, sel.rename, sym.flags, sym.info, sym.privateWithin, sym.coord)
           )
-        case _ :: rest => transformImport(rest, sym)
+        case None =>
+          if (isUnimportableUnlessRenamed(sym)) Nil
+          else if (selectors.exists(sel => sel.isWildcard && wildcardImports(sel, sym))) List(sym)
+          else Nil
       }
 
     val symNames =
