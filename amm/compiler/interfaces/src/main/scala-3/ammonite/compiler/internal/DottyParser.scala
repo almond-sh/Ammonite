@@ -61,6 +61,10 @@ trait DottyParser extends Parser {
       var empty = false
       if (in.token == Tokens.IMPORT)
         stats ++= importClause(outermost)
+      else if (outermost && in.token == Tokens.EXPORT)
+        // Unlike dotty's REPL, we accept export clauses at the outermost level, as they end
+        // up in the wrapper object of the cell / script, where they are allowed
+        stats ++= exportClause()
       else if (isExprIntro)
         stats += expr(Location.InBlock)
       else if in.token == Tokens.IMPLICIT && !in.inModifierPosition() then

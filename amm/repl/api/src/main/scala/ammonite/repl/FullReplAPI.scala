@@ -224,6 +224,9 @@ object FullReplAPI {
     def printImport(imported: String) = {
       Iterator(colors().`type`()("import ").render, colors().ident()(imported).render)
     }
+    def printExport(exported: String) = {
+      Iterator(colors().`type`()("export ").render, colors().ident()(exported).render)
+    }
   }
 }
 

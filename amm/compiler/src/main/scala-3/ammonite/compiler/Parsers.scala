@@ -137,8 +137,12 @@ class Parsers extends IParser {
         val next = statsAndStmts.next()
         val ((nextStat, nextStmt), nextIdx) = next
         (current, nextStat) match {
+          // `import a.b, c.d` and `export a.b, c.d` are parsed as several trees
           case (Some((_: untpd.Import, stmt, idx)), _: untpd.Import)
               if stmt.startsWith("import ") && !nextStmt.startsWith("import ") =>
+            current = Some((nextStat, stmt + nextStmt, idx))
+          case (Some((_: untpd.Export, stmt, idx)), _: untpd.Export)
+              if stmt.startsWith("export ") && !nextStmt.startsWith("export ") =>
             current = Some((nextStat, stmt + nextStmt, idx))
           case _ =>
             current.foreach { case (_, stmt, idx) => stmts0.+=((idx, stmt)) }

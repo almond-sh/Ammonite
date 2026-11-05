@@ -282,6 +282,21 @@ class Preprocessor(
       ))
   }
 
+  private val Export = Processor {
+    case (name, code, tree: untpd.Export) =>
+      val Array(keyword, body) = code.split(" ", 2)
+      Expanded(code, Seq(
+        s"""
+        _root_.ammonite
+              .repl
+              .ReplBridge
+              .value
+              .Internal
+              .printExport(${Util.literalize(body.trim)})
+        """
+      ))
+  }
+
   private val Expr = Processor {
     //Expressions are lifted to anon function applications so they will be JITed
     case (name, code, tree) =>
@@ -336,7 +351,8 @@ class Preprocessor(
   }
 
   private val decls = Seq[(String, String, untpd.Tree) => Option[Expanded]](
-    ObjectDef, ClassDef, TraitDef, DefDef, ExtDef, TypeDef, VarDef, PatDef, Import, Expr
+    ObjectDef, ClassDef, TraitDef, DefDef, ExtDef, TypeDef, VarDef, PatDef, Import, Export,
+    Expr
   )
 
   private def complete(
@@ -369,6 +385,8 @@ class Preprocessor(
 
               // This handles the multi-import case `import a.b, c.d`
               case trees if trees.forall(_.isInstanceOf[untpd.Import]) => handleTree(trees(0))
+              // and the multi-export one, `export a.b, c.d`
+              case trees if trees.forall(_.isInstanceOf[untpd.Export]) => handleTree(trees(0))
 
               // AFAIK this can only happen for pattern-matching multi-assignment,
               // which for some reason parse into a list of statements. In such a
