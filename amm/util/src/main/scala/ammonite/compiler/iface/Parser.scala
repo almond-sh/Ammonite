@@ -43,8 +43,8 @@ abstract class Parser {
       `type`: fansi.Attrs,
       literal: fansi.Attrs,
       keyword: fansi.Attrs,
-      reset: fansi.Attrs,
-      notImplemented: fansi.Attrs
+      notImplemented: fansi.Attrs,
+      reset: fansi.Attrs
   ): Vector[Char]
 
   def isObjDef(code: String): Boolean

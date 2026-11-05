@@ -293,6 +293,8 @@ class Parsers extends IParser {
                        keyword: fansi.Attrs,
                        notImplemented: fansi.Attrs,
                        reset: fansi.Attrs): Vector[Char] = {
+    // Like in Scala 2, no specific colors for the names of definitions and for
+    // annotations (that get highlighted like the rest of the code)
     val valDef = reset
     val annotation = reset
     new SyntaxHighlighting(
@@ -332,7 +334,9 @@ class Parsers extends IParser {
   def highlightIndices[T](buffer: Vector[Char],
                           ruleColors: PartialFunction[String, T],
                           endColor: T): Seq[(Int, T)] =
-    // Not available in Scala 3
+    // Not available in Scala 3: rule names in ruleColors are those of the Scala 2
+    // fastparse grammar. Unused since ammonite-shell's path completion (its only
+    // user) is gone.
     Seq((0, endColor), (999999999, endColor))
 }
 
