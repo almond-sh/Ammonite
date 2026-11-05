@@ -4,13 +4,13 @@ package ammonite.compiler
 // https://github.com/lampepfl/dotty/blob/3.0.0-M3/
 //   compiler/src/dotty/tools/dotc/printing/SyntaxHighlighting.scala
 
+import ammonite.compiler.internal.CompilerInternals
+
 import dotty.tools.dotc
 import dotc.CompilationUnit
 import dotc.ast.untpd
 import dotc.core.Contexts._
 import dotc.core.StdNames._
-import dotc.parsing.Parsers.Parser
-import dotc.parsing.Scanners.Scanner
 import dotc.parsing.Tokens._
 import dotc.reporting.Reporter
 import dotc.util.Spans.Span
@@ -48,7 +48,7 @@ class SyntaxHighlighting(
         if (span.exists && span.start >= 0 && span.end <= in.length)
           highlightRange(span.start, span.end, attr)
 
-      val scanner = new Scanner(source)
+      val scanner = CompilerInternals.parserMaker.scanner(source)
       while (scanner.token != EOF) {
         val start = scanner.offset
         val token = scanner.token
@@ -119,7 +119,7 @@ class SyntaxHighlighting(
         }
       }
 
-      val parser = new DottyParser(source)
+      val parser = CompilerInternals.parserMaker.parser(source)
       val trees = parser.blockStatSeq()
       TreeHighlighter.highlight(trees)
 

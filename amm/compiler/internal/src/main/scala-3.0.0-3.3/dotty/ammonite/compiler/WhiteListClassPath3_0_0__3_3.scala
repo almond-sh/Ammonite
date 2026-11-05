@@ -5,7 +5,10 @@ import ammonite.util.Util
 import dotty.tools.dotc.classpath.{ClassPathEntries, PackageName}
 import dotty.tools.io.ClassPath
 
-class WhiteListClasspath(aggregates: Seq[ClassPath], whitelist: Set[Seq[String]])
+/**
+ * The class path of the parts of `aggregates` that `whitelist` lists, for the compilers up to 3.3.x.
+ */
+class WhiteListClassPath3_0_0__3_3(aggregates: Seq[ClassPath], whitelist: Set[Seq[String]])
     extends dotty.tools.dotc.classpath.AggregateClassPath(aggregates) {
   override def findClassFile(name: String) = {
     val tokens = name.split('.')
@@ -25,5 +28,5 @@ class WhiteListClasspath(aggregates: Seq[ClassPath], whitelist: Set[Seq[String]]
   }
 
   override def toString: String =
-    s"WhiteListClasspath($aggregates, ${whitelist.size} white-listed elements)"
+    s"WhiteListClassPath($aggregates, ${whitelist.size} white-listed elements)"
 }

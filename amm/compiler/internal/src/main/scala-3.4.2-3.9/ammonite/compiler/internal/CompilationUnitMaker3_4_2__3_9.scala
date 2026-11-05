@@ -3,8 +3,8 @@ package ammonite.compiler.internal
 import dotty.tools.dotc.CompilationUnit
 import dotty.tools.dotc.util.SourceFile
 
-/** The [[CompilationUnitMaker]] for the compilers of 3.4.2 and later. */
-class CompilationUnitMaker3_4_2 extends CompilationUnitMaker {
+/** The [[CompilationUnitMaker]] for the compilers of 3.4.2 to 3.9.x. */
+class CompilationUnitMaker3_4_2__3_9 extends CompilationUnitMaker {
   def notSuspendable(source: SourceFile): CompilationUnit =
     // as done in
     // https://github.com/lampepfl/dotty/blob/3.0.0-M3/

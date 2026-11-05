@@ -46,10 +46,12 @@ val scala2_13Versions = 3.to(18)
   .map(v => s"2.13.$v")
 
 val scala3Lts = "3.3.8"
-val scala3Latest = "3.9.0"
+// The Scala 3 LTS series that follows the 3.3.x one
+val scala3NextLts = "3.9.0"
+val scala3Latest = "3.10.0"
 
 val scala2Versions = scala2_12Versions ++ scala2_13Versions
-val scala3Versions = Seq(scala3Lts, scala3Latest)
+val scala3Versions = Seq(scala3Lts, scala3NextLts, scala3Latest)
 
 // Modules that aren't cross-published for full Scala versions are built once per binary Scala
 // version, with the oldest Scala version we support for it: Scala 2 patch releases are only
@@ -80,6 +82,7 @@ val assemblyCrossScalaVersions = Seq(
   scala2_12Versions.last,
   scala2_13Versions.last,
   scala3Lts,
+  scala3NextLts,
   scala3Latest
 )
 def isScala2_12_10OrLater(sv: String): Boolean = {
@@ -204,9 +207,9 @@ val compilerInternalDirs: Seq[CompilerInternalDir] = {
       sv => isScala3(sv) && Version(sv) < Version("3.4.2")
     ),
     CompilerInternalDir(
-      "scala-3.4.2+",
+      "scala-3.4.2-3.9",
       Seq("CompilationUnitMaker"),
-      sv => isScala3(sv) && Version(sv) >= Version("3.4.2")
+      sv => isScala3(sv) && Version(sv) >= Version("3.4.2") && Version(sv) < Version("3.10.0")
     ),
     // GivenNames: desugar.inventGivenOrExtensionName was renamed to inventGivenName in 3.5.0
     CompilerInternalDir(
@@ -228,8 +231,14 @@ val compilerInternalDirs: Seq[CompilerInternalDir] = {
     ),
     CompilerInternalDir(
       "scala-3.8.2+",
-      Seq("MessageRenderer", "TermRefNames"),
+      Seq("TermRefNames"),
       sv => isScala3(sv) && Version(sv) >= Version("3.8.2")
+    ),
+    // 3.10.0 had MessageRendering.renderPath take a path rather than a file
+    CompilerInternalDir(
+      "scala-3.8.2-3.9",
+      Seq("MessageRenderer"),
+      sv => isScala3(sv) && Version(sv) >= Version("3.8.2") && Version(sv) < Version("3.10.0")
     ),
     // CompletionMaker: dotty's Completion.Completer took over the whole tree path in 3.7.0
     CompilerInternalDir(
@@ -242,21 +251,48 @@ val compilerInternalDirs: Seq[CompilerInternalDir] = {
       Seq("CompletionMaker"),
       sv => isScala3(sv) && Version(sv) >= Version("3.7.0") && Version(sv) < Version("3.9.0")
     ),
-    // UrlJarClassPathMaker: ClassPath#classes hands back BinaryFileEntry-s since 3.4.0, and
-    // ClassPath#findClassFile gave way to findClassFileAndModuleFile in 3.9.0 (3.4.x to 3.8.x
-    // would need a variant of their own, none of them being supported for now)
+    // PlatformMaker: ClassPath#classes hands back BinaryFileEntry-s since 3.4.0,
+    // ClassPath#findClassFile gave way to findClassFileAndModuleFile in 3.9.0, and 3.10.0 moved
+    // ClassPath to dotty.tools.dotc.classpath, and reworked it (3.4.x to 3.8.x would need a
+    // variant of their own, none of them being supported for now)
     CompilerInternalDir(
       "scala-3.0.0-3.3",
-      Seq("UrlJarClassPathMaker"),
+      Seq("PlatformMaker"),
       sv => isScala3(sv) && Version(sv) < Version("3.4.0")
     ),
-    // 3.9.0 made Completion.CompletionResult.names hand back the site each denotation was
-    // found at, along with the denotations themselves (CompletionMaker), and is the next
-    // version UrlJarClassPathMaker supports
+    CompilerInternalDir(
+      "scala-3.9",
+      Seq("PlatformMaker"),
+      sv => isScala3(sv) && Version(sv) >= Version("3.9.0") && Version(sv) < Version("3.10.0")
+    ),
+    // CompletionMaker: 3.9.0 made Completion.CompletionResult.names hand back the site each
+    // denotation was found at, along with the denotations themselves
     CompilerInternalDir(
       "scala-3.9.0+",
-      Seq("CompletionMaker", "UrlJarClassPathMaker"),
+      Seq("CompletionMaker"),
       sv => isScala3(sv) && Version(sv) >= Version("3.9.0")
+    ),
+    // ParserMaker: Parser and Scanner took an extra limit parameter in 3.10.0
+    // CommentSettings: -Ydrop-docs and -Ycook-docs, deprecated in 3.9.0, were dropped in 3.10.0
+    // SourceFileMaker: SourceFile reads its content from its file only since 3.10.0
+    CompilerInternalDir(
+      "scala-3.0.0-3.9",
+      Seq("CommentSettings", "ParserMaker", "SourceFileMaker"),
+      sv => isScala3(sv) && Version(sv) < Version("3.10.0")
+    ),
+    // 3.10.0 is also the next version PlatformMaker supports, and CompilationUnitMaker needs to
+    // give the units it creates an info since then
+    CompilerInternalDir(
+      "scala-3.10.0+",
+      Seq(
+        "CommentSettings",
+        "CompilationUnitMaker",
+        "MessageRenderer",
+        "ParserMaker",
+        "PlatformMaker",
+        "SourceFileMaker"
+      ),
+      sv => isScala3(sv) && Version(sv) >= Version("3.10.0")
     )
   )
 }
@@ -335,7 +371,7 @@ def ciScalaVersions = Task {
   val allEntries =
     entries(scala2_12Versions, includeMiddle = true) ++
       entries(scala2_13Versions, includeMiddle = true) ++
-      entries(scala3Versions, includeMiddle = false)
+      entries(scala3Versions, includeMiddle = true)
 
   // The terminal module is cross-built for binCrossScalaVersions only, and its tests
   // don't depend on the Scala version of the matrix entry - only run them from one entry.

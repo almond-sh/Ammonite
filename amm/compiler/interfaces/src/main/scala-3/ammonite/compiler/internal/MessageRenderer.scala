@@ -8,7 +8,8 @@ import dotty.tools.dotc.reporting.Diagnostic
  *
  * This wraps a subclass of `MessageRendering`, which is a trait: the mixin forwarders such a
  * subclass carries only resolve against the compiler it was compiled with, and 3.8.2 dropped
- * `inlinePosStack` from it. 3.8.2 also gave `NoExplanation` an extra constructor parameter.
+ * `inlinePosStack` from it, and 3.10.0 had `renderPath` take a path rather than a file. 3.8.2
+ * also gave `NoExplanation` an extra constructor parameter.
  */
 trait MessageRenderer {
 

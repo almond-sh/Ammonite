@@ -6,7 +6,8 @@ import dotty.tools.dotc.util.SourceFile
 /**
  * Creates the compilation units Ammonite feeds the compiler.
  *
- * `CompilationUnit` took a second constructor parameter in 3.4.2.
+ * `CompilationUnit` took a second constructor parameter in 3.4.2, whose type, `CompilationUnitInfo`,
+ * became a plain class in 3.10.0.
  */
 trait CompilationUnitMaker {
 

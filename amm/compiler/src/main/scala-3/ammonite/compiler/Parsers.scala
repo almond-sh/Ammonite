@@ -10,7 +10,7 @@ import ammonite.util.Util.CodeSource
 import dotty.tools.dotc
 import dotc.ast.untpd
 import dotc.CompilationUnit
-import dotc.core.Contexts.{ctx, Context, ContextBase}
+import dotc.core.Contexts.{ctx, Context}
 import dotc.parsing.Tokens
 import dotc.util.SourceFile
 
@@ -20,13 +20,13 @@ class Parsers extends IParser {
 
   // FIXME Get via Compiler?
   private lazy val initCtx: Context =
-    (new ContextBase).initialCtx
+    CompilerInternals.parserMaker.parsingContext()
 
   // From
   // https://github.com/lampepfl/dotty/blob/3.0.0-M3/
   //   compiler/src/dotty/tools/repl/ParseResult.scala/#L115-L120
   private def parseStats(using Context): List[untpd.Tree] = {
-    val parser = new DottyParser(ctx.source)
+    val parser = CompilerInternals.parserMaker.parser(ctx.source)
     val stats = parser.blockStatSeq()
     parser.accept(Tokens.EOF)
     stats
