@@ -66,6 +66,13 @@ object HighlightTests extends TestSuite {
           else "x: <G|y.type>"
         check("x: y.type", expected)
       }
+      test("qualifiedType") - {
+        // Scala 2 colors the whole path, Scala 3 its last segment, like dotty
+        val expected =
+          if (isScala2) "<Y|def> f(x: <G|java.io.File>) = x"
+          else "<Y|def> f(x: java.io.<G|File>) = x"
+        check("def f(x: java.io.File) = x", expected)
+      }
       test("literal") - check("1", "<G|1>")
       test("expressions") - check(
         "val (x, y) = 1 + 2 + 3",
@@ -114,7 +121,7 @@ object HighlightTests extends TestSuite {
         test("qualified") - {
           val expected =
             if (isScala2) "@<G|scala.transient> <Y|val> x = <G|1>"
-            else "@scala.transient <Y|val> x = <G|1>"
+            else "@scala.<G|transient> <Y|val> x = <G|1>"
           check("@scala.transient val x = 1", expected)
         }
       }

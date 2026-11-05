@@ -155,6 +155,9 @@ class SyntaxHighlighting(
               highlightPosition(tree.nameSpan, typeAttrs)
             case tree: Ident if tree.isType =>
               highlightPosition(tree.span, typeAttrs)
+            case tree: Select if tree.isType =>
+              // only the type name of a qualified type, like dotty does
+              highlightPosition(tree.nameSpan, typeAttrs)
             case _: TypTree =>
               highlightPosition(tree.span, typeAttrs)
             case _ =>
