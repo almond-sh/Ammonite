@@ -102,6 +102,22 @@ object HighlightTests extends TestSuite {
           check("val x = \"a\nval y = 2", expected)
         }
       }
+      test("annotation") {
+        test("args") - check(
+          """@deprecated("a", "b") def f = 1""",
+          """@<G|deprecated>(<G|"a">, <G|"b">) <Y|def> f = <G|1>"""
+        )
+        test("noArgs") - check(
+          "@main def run() = ()",
+          "@<G|main> <Y|def> run() = ()"
+        )
+        test("qualified") - {
+          val expected =
+            if (isScala2) "@<G|scala.transient> <Y|val> x = <G|1>"
+            else "@scala.transient <Y|val> x = <G|1>"
+          check("@scala.transient val x = 1", expected)
+        }
+      }
       test("underscore") - {
         val expected =
           if (isScala2) """<Y|val> <Y|_> = <G|1>"""

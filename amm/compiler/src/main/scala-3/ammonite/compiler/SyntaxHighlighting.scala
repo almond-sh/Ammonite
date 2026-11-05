@@ -131,9 +131,14 @@ class SyntaxHighlighting(
           name == nme.ERROR || name == nme.CONSTRUCTOR
         }
 
-        def highlightAnnotations(tree: MemberDef): Unit =
+        // Without a color of their own (Ammonite has none), annotations are highlighted
+        // like the rest of the code: type in type color, literal arguments in literal
+        // color, etc. Coloring their whole span with no attributes would wipe out the
+        // colors of the literals in their arguments.
+        def highlightAnnotations(tree: MemberDef)(using Context): Unit =
           for (annotation <- tree.mods.annotations)
-            highlightPosition(annotation.span, annotationAttrs)
+            if (annotationAttrs.applyMask == 0L) traverse(annotation)
+            else highlightPosition(annotation.span, annotationAttrs)
 
         def highlight(trees: List[Tree])(using Context): Unit =
           trees.foreach(traverse)
