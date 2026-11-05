@@ -1007,6 +1007,35 @@ object AdvancedTests extends TestSuite {
       }
     }
 
+    test("no warnings about generated code") {
+      // Scala 3.9 warns about identifiers with '$' (E230), like the `$sess` package of
+      // the code Ammonite wraps commands in. These shouldn't be shown to users.
+      check.session(
+        """
+          @ val x = 1
+          warning:
+
+          @ val y = x + 1
+          warning:
+
+          @ y
+          res2: Int = 2
+        """
+      )
+      // but warnings about user code that uses '$' are still shown
+      val warnsAboutDollars = check.scalaVersion.split('.') match {
+        case Array("3", minor, _*) => minor.toInt >= 9
+        case _ => false
+      }
+      if (warnsAboutDollars)
+        check.session(
+          """
+            @ val a$b = 1
+            warning: The identifier `a$b` should not contain `$`
+          """
+        )
+    }
+
     test("package input") {
       check.session(
         """

@@ -167,7 +167,8 @@ class SingleScriptCompiler(
             printer,
             offsetInScala,
             processed.userCodeNestingLevel,
-            fileName
+            fileName,
+            processed.suffixCharLength
           ).map((offsetInScala, processed.code, _))
         } finally {
           flushMessages { idxInScala =>

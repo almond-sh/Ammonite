@@ -156,19 +156,44 @@ class Compiler(
     printer: Printer,
     importsLen: Int,
     userCodeNestingLevel: Int,
-    fileName: String
+    fileName: String,
+    suffixLen: Int
   ): Option[ICompiler.Output] =
     // println(s"Compiling\n${new String(src, StandardCharsets.UTF_8)}\n")
 
     self.userCodeNestingLevel = userCodeNestingLevel
     self.userCodeOffset = importsLen
 
+    // Where the user code lies in src, between the code Ammonite generates around it
+    val userCodeEnd = new String(src, "UTF-8").length - suffixLen
+    /*
+     * Whether a diagnostic is Scala 3.9's E230 warning ("The identifier ... should not contain
+     * `$`") about the code Ammonite generates around the user code, like `package $sess` or
+     * `object $routes`. Users can't do anything about those, so we don't show them. E230 on
+     * user code, and any other diagnostic, are still reported.
+     *
+     * E230 is IllegalIdentifierID, matched by number as it doesn't exist in Scala 3.3 (whose
+     * error numbers stop below 230), and error numbers are never reassigned.
+     */
+    def isGeneratedCodeWarning(diag: reporting.Diagnostic, sourceFile: SourceFile): Boolean =
+      diag.level == dotc.interfaces.Diagnostic.WARNING &&
+        diag.msg.errorId.errorNumber == 230 &&
+        diag.pos.exists &&
+        diag.pos.source == sourceFile &&
+        (diag.pos.point < importsLen || diag.pos.point > userCodeEnd)
+    // set below, before compiling anything
+    var sourceFile0: SourceFile = null
+
     val reporter0 = reporter match {
       case None =>
         Compiler.newStoreReporter()
       case Some(rep) =>
         val simpleReporter = new dotc.interfaces.SimpleReporter {
-          def report(diag: dotc.interfaces.Diagnostic) = {
+          def report(diag: dotc.interfaces.Diagnostic) = diag match {
+            case d: reporting.Diagnostic if isGeneratedCodeWarning(d, sourceFile0) =>
+            case _ => report0(diag)
+          }
+          private def report0(diag: dotc.interfaces.Diagnostic) = {
             val severity = diag.level match {
               case dotc.interfaces.Diagnostic.ERROR => "ERROR"
               case dotc.interfaces.Diagnostic.WARNING => "WARNING"
@@ -199,6 +224,7 @@ class Compiler(
         CompilerInternals.sourceFileMaker.inSourceRoot(fileName)(using run.runContext)
       else
         CompilerInternals.sourceFileMaker.virtual(fileName, src)
+    sourceFile0 = sourceFile
 
     implicit val ctx: Context = run.runContext.withSource(sourceFile)
 
@@ -246,6 +272,7 @@ class Compiler(
         }
 
       diagnostics
+        .filter(d => !isGeneratedCodeWarning(d, sourceFile))
         .map(d => scalaDiagnosticToScDiagnostic(d).getOrElse(d))
         .map(formatError)
         .map(_.msg.toString)
