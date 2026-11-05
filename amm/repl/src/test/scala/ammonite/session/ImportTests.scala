@@ -231,8 +231,13 @@ object ImportTests extends TestSuite {
         """)
         // Prefix things properly in Scala-2.10 where the type printer is dumb
         test("paulp") {
-
-          if (!check.scala2) "disabled in Scala 3"
+          // Scala 3 can't import only the type or only the term of a name: importing a
+          // class by name also imports the constructor proxy that lets one write `Paulp()`,
+          // and importing the same name by name twice in the same scope is ambiguous, even if
+          // one import only has a type and the other a term. So the imports Ammonite
+          // generates for later cells, all in the same scope, can't keep the type of a name
+          // from one place and its term from another, which is what this test checks.
+          if (!check.scala2) "Disabled in Scala 3"
           else check.session(s"""
           @ import ammonite.testcode.paulp1._, ammonite.testcode.paulp2._
 
@@ -302,6 +307,21 @@ object ImportTests extends TestSuite {
 
           @ Paulp
           """)
+        }
+        test("objectFromClassPath") {
+          // Importing an object from the class path mustn't import a type of the same
+          // name too (Scala 3 used to take the class file of its static forwarders for one)
+          check.session(s"""
+          @ type Paulp = Int
+
+          @ import ammonite.testcode.paulp2._
+
+          @ (2: Paulp) + 1
+          res2: Int = 3
+
+          @ Paulp.toString
+          res3: String = "paulp2.Paulp2"
+        """)
         }
         test("paulpTypeRegression") {
           check.session(s"""
