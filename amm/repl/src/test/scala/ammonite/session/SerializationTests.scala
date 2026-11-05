@@ -6,8 +6,7 @@ import ammonite.compiler.CodeClassWrapper
 import utest._
 
 object SerializationTests extends TestSuite {
-  val tests = if (TestUtils.scala2) scala2Tests else scala3Tests
-  def scala2Tests = Tests {
+  val tests = Tests {
     println("SerializationTests")
     val check = new TestRepl {
       override def codeWrapper = CodeClassWrapper
@@ -35,11 +34,30 @@ object SerializationTests extends TestSuite {
       // the current session. We call the deserialized closure by reflection, and check
       // that the heavy computation was not run again.
 
-      // -Ydelambdafy=inline seems to be required in 2.12 for serializing lambdas
+      // -Ydelambdafy=inline seems to be required in 2.12 for serializing lambdas.
+      // Scala 3 has no such option, its lambdas are serializable when their type is. Their
+      // classes are spun by LambdaMetafactory: we can't call their methods by reflection,
+      // only those of the interfaces they implement (here, `apply(Object)` of `Function1`).
+      val (configureCompiler, selectable, getApply) =
+        if (TestUtils.scala2)
+          (
+            """@ interp.configureCompiler(_.settings.Ydelambdafy.value = "inline")""",
+            "",
+            """.getClass.getMethod("apply", classOf[Int])"""
+          )
+        else
+          (
+            "",
+            "@ import scala.reflect.Selectable.reflectiveSelectable",
+            """.getClass.getInterfaces.find(_.getName == "scala.Function1").get""" +
+              """.getMethod("apply", classOf[Object])"""
+          )
 
       check.session(
         s"""
-          @ interp.configureCompiler(_.settings.Ydelambdafy.value = "inline")
+          $configureCompiler
+
+          $selectable
 
           @ object costlySideEffect {
           @   import java.nio.file.{Files, Paths}
@@ -53,10 +71,11 @@ object SerializationTests extends TestSuite {
 
           @ class D // not serializable
 
-          @ val d =
+          @ val d = {
           @   // serialization should succeed in spite of this
           @   // non-serializable variable being around
           @   new D
+          @ }
 
           @ val a = {
           @   costlySideEffect()
@@ -84,8 +103,7 @@ object SerializationTests extends TestSuite {
           @ {{
           @   costlySideEffect.absent("before deserialization")
           @   closureClone
-          @     .getClass
-          @     .getMethod("apply", classOf[Int])
+          @     $getApply
           @     .invoke(closureClone, 2: java.lang.Integer)
           @   // calling apply should not run the side-effect again, the
           @   // value of 'a' must come from deserialization
@@ -95,9 +113,5 @@ object SerializationTests extends TestSuite {
         """
       )
     }
-  }
-  def scala3Tests = Tests {
-    // delambdafy not supported by Scala 3?
-    test("disabled") { "disabled for Scala 3" }
   }
 }
