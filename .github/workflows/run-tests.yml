@@ -6,10 +6,10 @@ on:
       - 2.x
   pull_request:
 
-# cancel older runs of a pull request;
-# this will not cancel anything for normal git pushes
+# cancel older runs when a new one starts for the same pull request,
+# or for the same branch on pushes
 concurrency:
-  group: cancel-old-pr-runs-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true
 
 jobs:
