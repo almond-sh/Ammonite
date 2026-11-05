@@ -105,7 +105,30 @@ class Parsers extends IParser {
     else if (needsMore)
       None
     else {
-      val startIndices = stats.toArray.map(_.startPos(using localCtx).point)
+      // The parser drops redundant braces around blocks - `{{ a }}` gives the same tree as
+      // `{ a }`, whose span doesn't include the outer braces. Make the statements start at
+      // their first brace, rather than leave it in the previous one.
+      val startIndices = {
+        val starts = stats.toArray.map(_.startPos(using localCtx).point)
+        val prevEnds = 0 +: stats.toArray.map(_.span.end).dropRight(1)
+        starts.zip(prevEnds).map {
+          case (start, prevEnd) =>
+            def inLineComment(braceIdx: Int) = {
+              val lineStart = code0.lastIndexOf('\n', braceIdx) + 1
+              code0.substring(math.max(lineStart, prevEnd), braceIdx).contains("//")
+            }
+            var idx = start
+            var j = start - 1
+            while (
+              j >= prevEnd &&
+              (code0(j).isWhitespace || (code0(j) == '{' && !inLineComment(j)))
+            ) {
+              if (code0(j) == '{') idx = j
+              j -= 1
+            }
+            idx
+        }
+      }
       def startEndIndices = startIndices.iterator
         .zip(startIndices.iterator.drop(1) ++ Iterator(code0.length))
       val stmts = startEndIndices.map {

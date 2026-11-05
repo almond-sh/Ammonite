@@ -408,7 +408,7 @@ object ScriptTests extends TestSuite {
           """)
       }
       test("noUnWrapping") {
-        if (check.scala2) check.session(s"""
+        check.session(s"""
           @ import os._
 
           @ interp.load.module(($printedScriptPath/"ScriptDontUnwrap.sc").toNIO)
@@ -418,8 +418,7 @@ object ScriptTests extends TestSuite {
 
           @ wrappedValue
           error: ${check.notFound("wrappedValue")}
-        """) else "Disabled in Scala 3"
-        // not sure why, in Scala 3, the parser slurps the first '{'…
+        """)
       }
       test("resolverWithinScript") {
         test("pass") {
