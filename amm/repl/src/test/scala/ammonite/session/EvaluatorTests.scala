@@ -172,7 +172,7 @@ object EvaluatorTests extends TestSuite {
         given_Int: Int = <given>
 
         @ extension (i: Int) def twice = (i * 2, List(i))
-        defined extension methods
+        defined extension method twice
 
         @ 2.twice
         res18: (Int, List[Int]) = (4, List(2))

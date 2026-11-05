@@ -222,8 +222,18 @@ class Preprocessor(
       m.name
   }
 
-  private val ExtDef = DefProc("extension methods") {
-    case ext: untpd.ExtMethods => Names.EmptyTermName
+  // `defined extension method shout`, `defined extension methods ident, concat`
+  private val ExtDef = Processor { case (_, code, ext: untpd.ExtMethods) =>
+    val names = ext.methods.collect {
+      case m: untpd.DefDef if !isPrivate(m) => Name.backtickWrap(m.name.decode.toString)
+    }
+    val printer =
+      if (names.isEmpty) Nil
+      else {
+        val label = if (names.lengthCompare(1) == 0) "extension method" else "extension methods"
+        Seq(definedStr(label, names.mkString(", ")))
+      }
+    Expanded(code, printer)
   }
   private val TypeDef = DefProc("type"){ case m: untpd.TypeDef => m.name }
 
