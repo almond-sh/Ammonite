@@ -114,12 +114,9 @@ object MainTests extends TestSuite {
           assert(out.contains(expected.trim))
         }
         test("emptyArg") {
-          if (TestUtils.scala2) {
-            val evaled = exec("ArgList.sc", "")
-            assert(evaled.success)
-          } else {
-            "Disabled in Scala 3"
-          }
+          val evaled = exec("ArgList.sc", "")
+          assert(evaled.success)
+          assert(evaled.out.contains("Argument: \n"))
         }
       }
     }

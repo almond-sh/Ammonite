@@ -123,6 +123,24 @@ class AmmonitePhase(
 
       (rootPrefix ++ headFullPath ++ tailPath).map(AmmName(_))
 
+    val members = {
+      val all = expr.tpe.allMembers.map(_.symbol)
+      // When loading a package from the class path, the class file the static forwarders
+      // of an object `Foo` live in, `Foo.class`, gets a class symbol `Foo` too, which turns
+      // out to be absent once completed. Leave those out, so that we don't import objects
+      // as types too. Only the classes we would import that have a companion module can be
+      // such stubs, so we don't complete the others. And we don't want to hear about the
+      // class files that fail to load while doing so: we may not need them.
+      val moduleNames = all.filter(_.is(Flags.Module)).map(_.name.toTermName).toSet
+      lazy val silentCtx = ctx.fresh.setReporter(Compiler.newStoreReporter())
+      def maybeStub(sym: Symbol) =
+        sym.isClass && !sym.is(Flags.Module) && moduleNames(sym.name.toTermName) && saneSym(sym)
+      all.filter { sym =>
+        !maybeStub(sym) ||
+          !scala.util.Try(sym.denot.isAbsent()(using silentCtx)).getOrElse(false)
+      }
+    }
+
     def isMask(sel: untpd.ImportSelector) = sel.name != nme.WILDCARD && sel.rename == nme.WILDCARD
 
     val renameMap =
@@ -134,9 +152,7 @@ class AmmonitePhase(
         * non-type symbols that are importable for that name
         */
       val importableIsTypes =
-        expr.tpe
-            .allMembers
-            .map(_.symbol)
+        members
             .filter(saneSym(_))
             .groupBy(_.name.decode.toString)
             .mapValues(_.map(_.isType).toVector)
@@ -196,9 +212,11 @@ class AmmonitePhase(
       selectors.find(namedSelectorMatches(_, sym)) match {
         case Some(sel) =>
           if (isMask(sel)) Nil
-          else List(
-            newSymbol(sym.owner, sel.rename, sym.flags, sym.info, sym.privateWithin, sym.coord)
-          )
+          else {
+            // selector names are term names, keep types types
+            val name = if (sym.isType) sel.rename.toTypeName else sel.rename
+            List(newSymbol(sym.owner, name, sym.flags, sym.info, sym.privateWithin, sym.coord))
+          }
         case None =>
           if (isUnimportableUnlessRenamed(sym)) Nil
           else if (selectors.exists(sel => sel.isWildcard && wildcardImports(sel, sym))) List(sym)
@@ -207,7 +225,7 @@ class AmmonitePhase(
 
     val symNames =
       for {
-        sym <- expr.tpe.allMembers.map(_.symbol).flatMap(transformImport(selectors, _))
+        sym <- members.flatMap(transformImport(selectors, _))
         if saneSym(sym)
       } yield (sym.isType, sym.name.decode.toString)
 

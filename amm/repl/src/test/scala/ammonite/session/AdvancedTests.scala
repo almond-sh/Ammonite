@@ -525,26 +525,28 @@ object AdvancedTests extends TestSuite {
     }
 
     test("loadURL") {
-      if (check.scala2) {
-        val sbv = {
+      val (sbv, scalacheckVersion) =
+        if (check.scala2) {
           val sv = check.scalaVersion
-          if (sv.forall(c => c.isDigit || c == '.'))
-            sv.split('.').take(2).mkString(".")
-          else
-            sv
-        }
-        val url = "https://repo1.maven.org/maven2/" +
-          s"org/scalacheck/scalacheck_$sbv/1.14.0/scalacheck_$sbv-1.14.0.jar"
-        check.session(s"""
-          @ interp.load.cp(new java.net.URL("$url"))
+          val sbv0 =
+            if (sv.forall(c => c.isDigit || c == '.'))
+              sv.split('.').take(2).mkString(".")
+            else
+              sv
+          (sbv0, "1.14.0")
+        } else ("3", "1.17.0")
+      val url = "https://repo1.maven.org/maven2/" +
+        s"org/scalacheck/scalacheck_$sbv/$scalacheckVersion/" +
+        s"scalacheck_$sbv-$scalacheckVersion.jar"
+      check.session(s"""
+        @ interp.load.cp(new java.net.URL("$url"))
 
-          @ import org.scalacheck.Gen
-          import org.scalacheck.Gen
+        @ import org.scalacheck.Gen
+        import org.scalacheck.Gen
 
-          @ val check = Gen.choose(1, 5).sample.exists(_ <= 5)
-          check: Boolean = true
-        """)
-      } else "Disabled in Scala 3"
+        @ val check = Gen.choose(1, 5).sample.exists(_ <= 5)
+        check: Boolean = true
+      """)
     }
 
     test("accessPressy") {

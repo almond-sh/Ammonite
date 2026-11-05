@@ -8,19 +8,26 @@ import scala.collection.JavaConverters._
 import scala.util.Try
 
 object IvyThing {
+  /**
+   * Completes dependencies, for `import $ivy`
+   *
+   * @param scalaVersion the Scala version of the session the dependencies are added to - not
+   *                     necessarily that of the scala-library we run with (Scala 3 used the
+   *                     2.13 one up to 3.7, and has its own, versioned like the compiler, since)
+   */
   def completer(
       repositories: Seq[Repository],
-      verbose: Boolean
+      verbose: Boolean,
+      scalaVersion: String
   ): String => (Int, Seq[String]) = {
     val cache = Cache.create()
       .withLogger(if (verbose) Logger.progressBars() else Logger.nop)
-    val sv = scala.util.Properties.versionNumberString
-    val sbv = sv.split('.').take(2).mkString(".")
+    val sbv = ammonite.interp.api.IvyConstructor.scalaBinaryVersion(scalaVersion)
 
     s =>
       val res = coursierapi.Complete.create()
         .withCache(cache)
-        .withScalaVersion(sv)
+        .withScalaVersion(scalaVersion)
         .withScalaBinaryVersion(sbv)
         .withInput(s)
         .complete()

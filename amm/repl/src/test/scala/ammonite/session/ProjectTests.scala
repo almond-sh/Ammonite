@@ -117,6 +117,9 @@ object ProjectTests extends TestSuite {
           res4: 2 = 2
         """)
       else
+        // Shapeless 2 isn't published for Scala 3, and the HLists and singleton types it
+        // provides are built into Scala 3. Loading libraries with macros and implicits through
+        // $ivy is already exercised by other tests here.
         "Disabled in Scala 3"
     }
 
@@ -148,12 +151,7 @@ object ProjectTests extends TestSuite {
       """)
     }
     test("resources") {
-      // Disabled in Scala 3 for now. Getting weird typing errors, like
-      //   exception while typing ammonite.ops.Callable1Implicit…
-      //   java.lang.AssertionError: assertion failed:
-      //     duplicate type CC#44165; previous was type CC#44157
-      // (2.13 / 3 compatibility issue?)
-      if (check.scala2 && !check.scala2_12) check.session("""
+      if (!check.scala2_12) check.session("""
         @ val path = {
         @   os.resource/"org"/"apache"/"jackrabbit"/"oak"/"plugins"/"blob"/"blobstore.properties"
         @ }
