@@ -167,9 +167,7 @@ object ImportTests extends TestSuite {
         // Make sure that you can have a term and a type of the same name
         // coming from different places and they don't stomp over each other
         // (#199) and both are accessible.
-        val aliasedType =
-          if (check.scala2) "Foo" else "Int"
-        test - check.session(s"""
+        test - check.session("""
           @ val Foo = 1
 
           @ type Foo = Int
@@ -178,7 +176,7 @@ object ImportTests extends TestSuite {
           res2: Int = 1
 
           @ 2: Foo
-          res3: $aliasedType = 2
+          res3: Foo = 2
         """)
 
         test {

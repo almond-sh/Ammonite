@@ -302,3 +302,6 @@ class AmmonitePhase(
       case t: tpd.TypeDef => processTree(t)
       case _ =>
     }
+
+    // Fill in the types of the values printed by the REPL
+    ctx.compilationUnit.tpdTree = ResultTypes.fill(ctx.compilationUnit.tpdTree)
