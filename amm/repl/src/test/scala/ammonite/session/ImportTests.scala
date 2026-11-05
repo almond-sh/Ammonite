@@ -516,7 +516,7 @@ object ImportTests extends TestSuite {
           import language.experimental.pureFunctions
 
           @ val g: Int -> Int = _ + 1
-          g: Int => Int = ?
+          g: Int -> Int = ?
 
           @ g(2)
           res2: Int = 3
@@ -535,7 +535,7 @@ object ImportTests extends TestSuite {
           defined function f
 
           @ val g: Int -> Int = n => try f(n) catch { case _: Exception => 0 }
-          g: Int => Int = ?
+          g: Int -> Int = ?
 
           @ g(2)
           res2: Int = 4
