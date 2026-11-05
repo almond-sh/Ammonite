@@ -196,9 +196,11 @@ class AmmonitePhase(
       selectors.find(namedSelectorMatches(_, sym)) match {
         case Some(sel) =>
           if (isMask(sel)) Nil
-          else List(
-            newSymbol(sym.owner, sel.rename, sym.flags, sym.info, sym.privateWithin, sym.coord)
-          )
+          else {
+            // selector names are term names, keep types types
+            val name = if (sym.isType) sel.rename.toTypeName else sel.rename
+            List(newSymbol(sym.owner, name, sym.flags, sym.info, sym.privateWithin, sym.coord))
+          }
         case None =>
           if (isUnimportableUnlessRenamed(sym)) Nil
           else if (selectors.exists(sel => sel.isWildcard && wildcardImports(sel, sym))) List(sym)

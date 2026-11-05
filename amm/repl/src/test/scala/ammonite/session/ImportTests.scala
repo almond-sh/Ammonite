@@ -304,8 +304,7 @@ object ImportTests extends TestSuite {
           """)
         }
         test("paulpTypeRegression") {
-          if (!check.scala2) "disabled in Scala 3"
-          else check.session(s"""
+          check.session(s"""
           @ type Paulp = Int
 
           @ import ammonite.testcode.paulp3.Paulp
