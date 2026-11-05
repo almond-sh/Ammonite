@@ -120,7 +120,7 @@ class SyntaxHighlighting(
       }
 
       val parser = CompilerInternals.parserMaker.parser(source)
-      val trees = parser.blockStatSeq()
+      val trees = parser.blockStatSeq(outermost = true)
       TreeHighlighter.highlight(trees)
 
       // if (colorAt.last != NoColor)

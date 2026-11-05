@@ -48,12 +48,16 @@ trait DottyParser extends Parser {
   // https://github.com/lampepfl/dotty/blob/3.2.0/
   //   compiler/src/dotty/tools/dotc/parsing/Parsers.scala#L4075-L4094
   // Unlike it, we accept private modifiers for top-level definitions.
+  // Our callers pass `outermost = true` when parsing a whole cell / script block, whose
+  // top-level language imports (`import language.experimental.captureChecking`, source version
+  // imports, ...) Preprocessor hoists to the top level of the code it generates. Blocks nested
+  // in the cell go through the `outermost = false` default.
   override def blockStatSeq(outermost: Boolean = false): List[untpd.Tree] = checkNoEscapingPlaceholders {
     val stats = new mutable.ListBuffer[untpd.Tree]
     while
       var empty = false
       if (in.token == Tokens.IMPORT)
-        stats ++= importClause()
+        stats ++= importClause(outermost)
       else if (isExprIntro)
         stats += expr(Location.InBlock)
       else if in.token == Tokens.IMPLICIT && !in.inModifierPosition() then
