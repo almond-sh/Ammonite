@@ -138,11 +138,11 @@ object EvaluatorTests extends TestSuite {
     test("classes") {
       val objWrapperPrefix =
         if (check.scala2) "" else "ammonite.$sess.cmd2."
-      val classWrapperCmd3Prefix =
-        if (check.scala2) "" else "cmd3.this.cmd2."
-      val classWrapperCmd6Prefix =
-        if (check.scala2) "" else "cmd6.this.cmd2."
-      def session(cmd3Prefix: String, cmd6Prefix: String = null) = s"""
+      // With the class-based wrapper, a command consisting only of object definitions
+      // gets wrapped in a singleton (see CodeClassWrapper)
+      val classWrapperPrefix =
+        if (check.scala2) "" else "ammonite.$sess.cmd2.Helper."
+      def session(prefix: String) = s"""
         @ class C{override def toString() = "Ceee"}
         defined class C
 
@@ -153,7 +153,7 @@ object EvaluatorTests extends TestSuite {
         defined object CO
 
         @ CO
-        res3: ${cmd3Prefix}CO.type = CO
+        res3: ${prefix}CO.type = CO
 
         @ case class CC()
         defined class CC
@@ -162,7 +162,7 @@ object EvaluatorTests extends TestSuite {
         res5: CC = CC()
 
         @ CO
-        res6: ${Option(cmd6Prefix).getOrElse(cmd3Prefix)}CO.type = CO
+        res6: ${prefix}CO.type = CO
 
         @ case class CO()
         defined class CO
@@ -177,7 +177,7 @@ object EvaluatorTests extends TestSuite {
       """
       check.session(
         session(objWrapperPrefix),
-        session(classWrapperCmd3Prefix, classWrapperCmd6Prefix)
+        session(classWrapperPrefix)
       )
 
       // there used to be a

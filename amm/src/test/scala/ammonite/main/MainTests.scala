@@ -305,5 +305,47 @@ object MainTests extends TestSuite {
 
       }
     }
+
+    test("classBased") {
+      def execClassBased(p: String, args: String*) =
+        new InProcessMainMethodRunner(
+          InProcessMainMethodRunner.base / "mains" / p,
+          List("--class-based"),
+          args
+        )
+
+      test("noMain") {
+        val evaled = execClassBased("Hello.sc")
+        assert(evaled.success)
+        assert(evaled.out.trim == "Hello World")
+      }
+      test("main") {
+        val evaled = execClassBased("Main.sc")
+        assert(evaled.success)
+        assert(evaled.out.contains("Hello! 1"))
+      }
+      test("multiMainArgs") {
+        val evaled = execClassBased("MultiMainDoc.sc", "functionB", "2", "foo")
+        assert(evaled.success)
+        assert(evaled.out == "Hello! foofoo ." + Util.newLine)
+      }
+      test("namedArgs") {
+        val evaled = execClassBased(
+          "Args.sc",
+          "-i",
+          "3",
+          "-s",
+          "Moo",
+          (os.pwd / "omg" / "moo").toString
+        )
+        assert(evaled.success)
+        assert(evaled.out == ("\"Hello! MooMooMoo moo.\"" + Util.newLine))
+      }
+      test("objectsOnly") {
+        val evaled = execClassBased("ObjectsOnly.sc")
+        assert(evaled.success)
+        assert(evaled.out.isEmpty)
+      }
+    }
   }
 }

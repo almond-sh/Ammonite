@@ -307,8 +307,27 @@ class Parsers extends IParser {
     ).highlight(buffer.mkString)(using initCtx).toVector
   }
 
-  def isObjDef(code: String): Boolean =
-    false // TODO
+  /**
+   * Whether `code` only consists of object definitions (possibly with modifiers or
+   * annotations, like `case object` or `private object`).
+   *
+   * Used by the class-based code wrapper, that wraps such code in a singleton rather
+   * than in a class. That's needed for macros in particular, whose implementations must
+   * be static.
+   */
+  def isObjDef(code: String): Boolean = {
+    given Context = initCtx
+    val reporter = Compiler.newStoreReporter()
+    val source   = SourceFile.virtual("<obj-def-checker>", code)
+    val unit     = CompilationUnit(source, mustExist = false)
+    val localCtx = ctx.fresh
+                      .setCompilationUnit(unit)
+                      .setReporter(reporter)
+    val stats = scala.util.Try(parseStats(using localCtx)).toOption
+    !reporter.hasErrors && stats.exists { stats =>
+      stats.nonEmpty && stats.forall(_.isInstanceOf[untpd.ModuleDef])
+    }
+  }
 
   def highlightIndices[T](buffer: Vector[Char],
                           ruleColors: PartialFunction[String, T],
