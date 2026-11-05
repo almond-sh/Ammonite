@@ -644,6 +644,101 @@ object AdvancedTests extends TestSuite {
           res4: String = "testtest"
         """)
     }
+    test("opaque-types") {
+      if (scala2) "N/A"
+      else
+        check.session("""
+          @ opaque type Meters = Double
+          defined type Meters
+
+          @ val m: Meters = 1.0
+          error: Found:    (1.0d : Double)
+
+          @ {
+          @ opaque type Km = Double
+          @ object Km {
+          @   def apply(d: Double): Km = d
+          @   extension (k: Km) def value: Double = k
+          @ }
+          @ }
+          defined type Km
+          defined object Km
+
+          @ val k = Km(2.5)
+          k: Km = 2.5
+
+          @ k.value
+          res3: Double = 2.5
+
+          @ val d: Double = k
+          error: Required: Double
+        """)
+    }
+    test("export-clauses") {
+      if (scala2) "N/A"
+      else
+        check.session("""
+          @ object A { def f = 1; val v = "a"; type T = Int; def g(x: Int) = x * 2 }
+          defined object A
+
+          @ export A.f
+          export A.f
+
+          @ f
+          res2: Int = 1
+
+          @ export A.{v, T}
+          export A.{v, T}
+
+          @ val t: T = 3
+          t: T = 3
+
+          @ v
+          res5: String = "a"
+
+          @ export A.{g as twice}
+          export A.{g as twice}
+
+          @ twice(4)
+          res7: Int = 8
+
+          @ object B { def h = 5 }; object C { def k = 6 }
+          defined object B
+          defined object C
+
+          @ export B.h, C.k
+          export B.h, C.k
+
+          @ h + k
+          res10: Int = 11
+
+          @ object D { def l = 7 }
+          defined object D
+
+          @ export D.*
+          export D.*
+
+          @ l
+          res13: Int = 7
+        """)
+    }
+    test("enums") {
+      if (scala2) "N/A"
+      else
+        check.session("""
+          @ enum Color { case Red, Green }
+          defined enum Color
+
+          @ Color.values.toList
+          res1: List[Color] = List(Red, Green)
+
+          @ enum Planet(val mass: Double) { case Earth extends Planet(5.97e24) }
+          defined enum Planet
+
+          @ Planet.Earth.mass
+          res3: Double = 5.97E24
+        """)
+    }
     test("output-directory") {
       val dir = os.temp.dir(prefix = "amm-output-dir-test")
       val predef0 =

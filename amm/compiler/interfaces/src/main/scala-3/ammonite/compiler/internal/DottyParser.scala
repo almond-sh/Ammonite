@@ -48,6 +48,9 @@ trait DottyParser extends Parser {
   // https://github.com/lampepfl/dotty/blob/3.2.0/
   //   compiler/src/dotty/tools/dotc/parsing/Parsers.scala#L4075-L4094
   // Unlike it, we accept private modifiers for top-level definitions.
+  // Like dotty's own REPL, we accept `opaque type` definitions at the outermost level (dotty
+  // only does so in `Mode.Interactive`, we do it for scripts too): the cell / script code ends
+  // up in a wrapper object, where opaque types are allowed.
   // Our callers pass `outermost = true` when parsing a whole cell / script block, whose
   // top-level language imports (`import language.experimental.captureChecking`, source version
   // imports, ...) Preprocessor hoists to the top level of the code it generates. Blocks nested
@@ -58,6 +61,10 @@ trait DottyParser extends Parser {
       var empty = false
       if (in.token == Tokens.IMPORT)
         stats ++= importClause(outermost)
+      else if (outermost && in.token == Tokens.EXPORT)
+        // Unlike dotty's REPL, we accept export clauses at the outermost level, as they end
+        // up in the wrapper object of the cell / script, where they are allowed
+        stats ++= exportClause()
       else if (isExprIntro)
         stats += expr(Location.InBlock)
       else if in.token == Tokens.IMPLICIT && !in.inModifierPosition() then
@@ -68,7 +75,10 @@ trait DottyParser extends Parser {
         )
       else if isIdent(nme.extension) && followingIsExtension() then
         stats += extension()
-      else if isDefIntro(oursLocalModifierTokens, excludedSoftModifiers = Set(nme.`opaque`)) then
+      else if isDefIntro(
+        oursLocalModifierTokens,
+        excludedSoftModifiers = if outermost then Set.empty else Set(nme.`opaque`)
+      ) then
         stats +++= localDef(in.offset)
       else
         empty = true
