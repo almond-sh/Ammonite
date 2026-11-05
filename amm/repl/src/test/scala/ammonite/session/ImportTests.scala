@@ -330,6 +330,16 @@ object ImportTests extends TestSuite {
         res2: Int = 3
       """)
     }
+    test("inBlock") {
+      check.session("""
+        @ {
+        @   import scala.util.Try
+        @   val n = Try(2).get
+        @ }
+        import scala.util.Try
+        n: Int = 2
+      """)
+    }
     test("collapsing") {
       check.session("""
         @ object Foo{ val bar = 1 }

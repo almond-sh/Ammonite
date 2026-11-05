@@ -246,7 +246,7 @@ class Preprocessor(
               .ReplBridge
               .value
               .Internal
-              .printImport(${Util.literalize(body)})
+              .printImport(${Util.literalize(body.trim)})
         """
       ))
   }
