@@ -341,6 +341,128 @@ object ImportTests extends TestSuite {
         @ Foo
       """)
     }
+    test("scala3Givens") {
+      // Imports recorded for later cells must follow Scala 3 semantics:
+      // `*` doesn't import givens, `given` only imports givens
+      test("givenSelector") {
+        if (check.scala2) "N/A"
+        else check.session(s"""
+          @ object A { def f = 1; given Ordering[String] = Ordering.String.reverse; val g = 2 }
+
+          @ import A.given
+
+          @ List("a", "c", "b").sorted
+          res2: List[String] = List("c", "b", "a")
+
+          @ g
+          error: ${check.notFound("g")}
+
+          @ f
+          error: ${check.notFound("f")}
+        """)
+      }
+      test("wildcardExcludesGivens") {
+        if (check.scala2) "N/A"
+        else check.session(s"""
+          @ object B {
+          @   given rev: Ordering[Int] = Ordering.Int.reverse
+          @   def h = 3
+          @   implicit val s: String = "s"
+          @   extension (i: Int) def twice = i * 2
+          @ }
+
+          @ import B.*
+
+          @ List(1, 3, 2).sorted
+          res2: List[Int] = List(1, 2, 3)
+
+          @ h
+          res3: Int = 3
+
+          @ implicitly[String]
+          res4: String = "s"
+
+          @ 2.twice
+          res5: Int = 4
+
+          @ rev
+          error: ${check.notFound("rev")}
+        """)
+      }
+      test("givenByType") {
+        if (check.scala2) "N/A"
+        else check.session(s"""
+          @ object C {
+          @   given Ordering[Int] = Ordering.Int.reverse
+          @   given Ordering[String] = Ordering.String.reverse
+          @   given [T](using o: Ordering[T]): Ordering[List[T]] = Ordering.Implicits.seqOrdering[List, T](using o)
+          @   def k = 4
+          @ }
+
+          @ import C.{given Ordering[Int], given Ordering[List[?]]}
+
+          @ List(1, 3, 2).sorted
+          res2: List[Int] = List(3, 2, 1)
+
+          @ List("a", "c", "b").sorted
+          res3: List[String] = List("a", "b", "c")
+
+          @ List(List(1), List(2)).sorted
+          res4: List[List[Int]] = List(List(2), List(1))
+
+          @ k
+          error: ${check.notFound("k")}
+        """)
+      }
+      test("mixed") {
+        if (check.scala2) "N/A"
+        else check.session(s"""
+          @ object D {
+          @   given rev: Ordering[Int] = Ordering.Int.reverse
+          @   def f = 1
+          @   def g = 2
+          @ }
+
+          @ import D.{f, given}
+
+          @ List(1, 3, 2).sorted
+          res2: List[Int] = List(3, 2, 1)
+
+          @ f
+          res3: Int = 1
+
+          @ g
+          error: ${check.notFound("g")}
+        """)
+      }
+      test("byNameRenameMask") {
+        if (check.scala2) "N/A"
+        else check.session(s"""
+          @ object E {
+          @   given rev: Ordering[Int] = Ordering.Int.reverse
+          @   def f = 1
+          @   def g = 2
+          @ }
+
+          @ import E.{rev as r, f as _, *}
+
+          @ List(1, 3, 2).sorted
+          res2: List[Int] = List(3, 2, 1)
+
+          @ r.compare(1, 2)
+          res3: Int = 1
+
+          @ g
+          res4: Int = 2
+
+          @ f
+          error: ${check.notFound("f")}
+
+          @ rev
+          error: ${check.notFound("rev")}
+        """)
+      }
+    }
     test("shapelessBugFull") {
       if (check.scala2) check.session("""
         @ import $ivy.`com.chuusai::shapeless:2.3.7`, shapeless.::
