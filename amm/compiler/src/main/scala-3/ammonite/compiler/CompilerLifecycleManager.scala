@@ -9,7 +9,6 @@ import java.nio.file.Path
 import dotty.tools.dotc
 import dotc.{Compiler => DottyCompiler}
 import dotc.core.Contexts.FreshContext
-import dotty.tools.io.AbstractFile
 import scala.collection.mutable
 
 /**
@@ -39,7 +38,7 @@ class CompilerLifecycleManager(
 
   private[this] object Internal {
     outputDir.foreach(java.nio.file.Files.createDirectories(_))
-    val dynamicClasspath = AbstractFile.getDirectory(outputDir.getOrElse(CompilerUtil.tempDir()))
+    val dynamicClasspath = Compiler.directory(outputDir.getOrElse(CompilerUtil.tempDir()))
     var compiler: ammonite.compiler.Compiler = null
     val onCompilerInit = mutable.Buffer.empty[DottyCompiler => Unit]
     val onSettingsInit = mutable.Buffer.empty[FreshContext => Unit] // TODO Pass a SettingsState too

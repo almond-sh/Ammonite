@@ -13,7 +13,6 @@ import dotc.ast.desugar
 import dotc.ast.untpd
 import dotc.core.Contexts._
 import dotc.core.{Flags, Names}
-import dotc.parsing.Parsers.Parser
 import dotc.parsing.Tokens
 import dotc.util.SourceFile
 
@@ -30,7 +29,7 @@ class Preprocessor(
     val reporter = Compiler.newStoreReporter()
     val sourceFile = SourceFile.virtual("foo", source)
     val parseCtx = ctx.fresh.setReporter(reporter).withSource(sourceFile)
-    val parser = new DottyParser(sourceFile)(using parseCtx)
+    val parser = CompilerInternals.parserMaker.parser(sourceFile)(using parseCtx)
     val stats = parser.blockStatSeq()
     parser.accept(Tokens.EOF)
     if (reporter.hasErrors) {

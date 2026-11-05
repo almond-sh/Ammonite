@@ -2,19 +2,18 @@ package dotty.ammonite.compiler
 
 import java.net.URL
 
-import ammonite.compiler.internal.UrlJarArchive
 import dotty.tools.dotc.classpath.FileUtils._
 import dotty.tools.dotc.classpath._
 import dotty.tools.io.{AbstractFile, ClassPath, ClassRepresentation}
 
 /**
- * The class path of a JAR that Ammonite can only reach through a URL, for the compilers up
- * to 3.3.x.
+ * The class path of a JAR that Ammonite can only reach through a URL, whose content is `root`,
+ * for the compilers up to 3.3.x.
  *
  * Modelled after the `ZipArchiveClassPath` of dotty's `ZipAndJarClassPathFactory`, that only
  * accepts JARs from the file system.
  */
-final class UrlJarClassPath3_0_0__3_3(url: URL, root: UrlJarArchive.Dir)
+final class UrlJarClassPath3_0_0__3_3(url: URL, root: AbstractFile)
     extends ClassPath
     with NoSourcePaths {
 

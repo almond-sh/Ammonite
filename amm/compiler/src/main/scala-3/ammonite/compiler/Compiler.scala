@@ -2,7 +2,7 @@ package ammonite.compiler
 
 import java.net.URL
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.Path
 import java.io.{ByteArrayInputStream, OutputStream}
 
 import ammonite.compiler.iface.{
@@ -12,7 +12,7 @@ import ammonite.compiler.iface.{
   Preprocessor => IPreprocessor,
   _
 }
-import ammonite.compiler.internal.{CompilerHelper, CompilerInternals, UrlJarArchive}
+import ammonite.compiler.internal.{CompilerHelper, CompilerInternals}
 import ammonite.util.{ImportData, Imports, PositionOffsetConversion, Printer}
 import ammonite.util.Util.newLine
 
@@ -20,8 +20,7 @@ import dotty.tools.dotc
 import dotc.{CompilationUnit, Compiler => DottyCompiler, Run, ScalacCommand}
 import dotc.ast.{tpd, untpd}
 import dotc.ast.Positioned
-import dotc.classpath
-import dotc.config.{CompilerCommand, JavaPlatform}
+import dotc.config.CompilerCommand
 import dotc.core.Contexts._
 import dotc.core.{Flags, MacroClassLoader, Mode}
 import dotc.core.Comments.{ContextDoc, ContextDocstrings}
@@ -37,11 +36,8 @@ import dotc.util.{Property, SourceFile, SourcePosition}
 import dotc.util.Spans.Span
 import dotty.tools.io.{
   AbstractFile,
-  ClassPath,
-  ClassRepresentation,
   File,
   VirtualDirectory,
-  VirtualFile,
   PlainFile
 }
 
@@ -58,26 +54,27 @@ class Compiler(
 ) extends ICompiler:
   self =>
 
-  import Compiler.{enumerateVdFiles, files, jrtClassPath}
+  import Compiler.{enumerateVdFiles, files}
 
-  private val outputDir = new VirtualDirectory("(memory)")
+  /**
+   * A new in-memory directory for the compiler to write class files to.
+   *
+   * We use a new one for each compilation, as `VirtualDirectory` can't be emptied since 3.10.0
+   * (its constructor is `private[io]` since then too, but that's only enforced by the compiler,
+   * and the one we compile against doesn't).
+   */
+  private def newOutputDir(): VirtualDirectory = new VirtualDirectory("(memory)")
 
   private def initCtx: Context =
     val base: ContextBase =
       new ContextBase:
         override protected def newPlatform(using Context) =
-          new JavaPlatform:
-            private var classPath0: ClassPath = null
-            override def classPath(using Context) =
-              if (classPath0 == null)
-                classPath0 = classpath.AggregateClassPath(Seq(
-                  asDottyClassPath(initialClassPath, whiteListed = true),
-                  // Like everything in initialClassPath, which classPath lists too, the JDK
-                  // classes aren't white-listed
-                  asDottyClassPath(self.classPath, jrtClassPath),
-                  classpath.ClassPathFactory.newClassPath(dynamicClassPath)
-                ))
-              classPath0
+          CompilerInternals.platformMaker.platform(
+            initialClassPath,
+            self.classPath,
+            dynamicClassPath,
+            whiteList
+          )
     base.initialCtx
 
   private def sourcesRequired = false
@@ -98,7 +95,7 @@ class Compiler(
     ictx.setProperty(MacroClassLoaderKey, macroClassLoader)
     Positioned.init
 
-    if !ictx.settings.YdropComments.value then
+    if !CompilerInternals.commentSettings.dropComments then
       ictx.setProperty(ContextDoc, new ContextDocstrings)
     val fileNamesOpt = ScalacCommand.checkUsage(
       summary,
@@ -110,38 +107,13 @@ class Compiler(
     contextInit(ictx)
     (fileNames, ictx)
 
-  private def asDottyClassPath(
-    cp: Seq[URL],
-    extra: Seq[ClassPath] = Nil,
-    whiteListed: Boolean = false
-  )(using Context): ClassPath =
-    val (dirs, jars) = cp.partition { url =>
-      url.getProtocol == "file" && Files.isDirectory(Paths.get(url.toURI))
-    }
-
-    val dirsCp = dirs.map(u => classpath.ClassPathFactory.newClassPath(AbstractFile.getURL(u)))
-    val jarsCp = jars
-      .filter(ammonite.util.Classpath.canBeOpenedAsJar)
-      .map { u =>
-        if (u.getProtocol == "file")
-          classpath.ZipAndJarClassPathFactory.create(AbstractFile.getURL(u))
-        else
-          // dotty only reads JARs from the file system, we read the others ourselves,
-          // like the JARs that coursier standalone launchers embed
-          CompilerInternals.urlJarClassPathMaker.classPath(u, UrlJarArchive.root(u))
-      }
-
-    if (whiteListed)
-      new dotty.ammonite.compiler.WhiteListClasspath(dirsCp ++ jarsCp ++ extra, whiteList)
-    else classpath.AggregateClassPath(dirsCp ++ jarsCp ++ extra)
-
   // Originally adapted from
   // https://github.com/lampepfl/dotty/blob/3.0.0-M3/
   //   compiler/src/dotty/tools/repl/ReplDriver.scala/#L67-L73
   /** Create a fresh and initialized context with IDE mode enabled */
   lazy val initialCtx =
     val rootCtx = initCtx.fresh.addMode(Mode.ReadPositions | Mode.Interactive)
-    rootCtx.setSetting(rootCtx.settings.YcookComments, true)
+    CompilerInternals.commentSettings.cookComments(rootCtx)
     // FIXME Disabled for the tests to pass
     rootCtx.setSetting(rootCtx.settings.color, "never")
     // FIXME We lose possible custom openStream implementations on the URLs of initialClassPath and
@@ -149,7 +121,7 @@ class Compiler(
     val initialClassPath0 = initialClassPath
       // .filter(!_.toURI.toASCIIString.contains("fansi_2.13"))
       // .filter(!_.toURI.toASCIIString.contains("pprint_2.13"))
-    rootCtx.setSetting(rootCtx.settings.outputDir, outputDir)
+    rootCtx.setSetting(rootCtx.settings.outputDir, newOutputDir())
 
     val (_, ictx) = setup(settings.toArray, rootCtx)
     ictx.base.initialize()(using ictx)
@@ -209,21 +181,21 @@ class Compiler(
         }
         reporting.Reporter.fromSimpleReporter(simpleReporter)
     }
-    val run = new Run(compiler, initialCtx.fresh.setReporter(reporter0))
+    val outputDir = newOutputDir()
+    val run = new Run(
+      compiler,
+      initialCtx.fresh
+        .setReporter(reporter0)
+        .setSetting(initialCtx.settings.outputDir, outputDir)
+    )
 
     val semanticDbEnabled = run.runContext.settings.Xsemanticdb.value(using run.runContext)
     val sourceFile =
-      if (semanticDbEnabled) {
+      if (semanticDbEnabled)
         // semanticdb needs the sources to be written on disk, so we assume they're there already
-        val root = run.runContext.settings.sourceroot.value(using run.runContext)
-        SourceFile(AbstractFile.getFile(Paths.get(root).resolve(fileName)), "UTF-8")
-      }else{
-        val vf = new VirtualFile(fileName.split("/", -1).last, fileName)
-        val out = vf.output
-        out.write(src)
-        out.close()
-        new SourceFile(vf, new String(src, "UTF-8").toCharArray)
-      }
+        CompilerInternals.sourceFileMaker.inSourceRoot(fileName)(using run.runContext)
+      else
+        CompilerInternals.sourceFileMaker.virtual(fileName, src)
 
     implicit val ctx: Context = run.runContext.withSource(sourceFile)
 
@@ -244,7 +216,10 @@ class Compiler(
         new String(src),
         importsLen
       )
-      val scFile = new SourceFile(sourceFile.file, sourceFile.content().drop(importsLen))
+      val scFile = CompilerInternals.sourceFileMaker.withContent(
+        sourceFile,
+        sourceFile.content().drop(importsLen)
+      )
       def scalaOffsetToScOffset(scalaOffset: Int): Option[Int] =
         scalaPosToScPos(sourceFile.offsetToLine(scalaOffset), sourceFile.column(scalaOffset)).map {
           case (scLine, scCol) => scFile.lineToOffset(scLine) + scCol
@@ -291,7 +266,6 @@ class Compiler(
         val classes = files(outputDir).toArray
         // outputDir is None here, dynamicClassPath should already correspond to an on-disk directory
         Compiler.addToClasspath(classes, dynamicClassPath, None)
-        outputDir.clear()
         val lineShift = PositionOffsetConversion.offsetToPos(new String(src)).apply(importsLen).line
         val mappings = Map(sourceFile.file.name -> (sourceFile.file.name, -lineShift))
         val postProcessedClasses = classes.toVector.map {
@@ -470,10 +444,6 @@ class Compiler(
 
 object Compiler:
 
-  /** The JDK classes, read from the modules of the JVM we run on (Java >= 9 only) */
-  private lazy val jrtClassPath: Seq[ClassPath] =
-    ammonite.util.Classpath.jrtFileSystem.map(new classpath.JrtClassPath(_)).toSeq
-
   /** Create empty outer store reporter */
   def newStoreReporter(): reporting.StoreReporter =
     new reporting.StoreReporter(null)
@@ -503,6 +473,15 @@ object Compiler:
     // should catch this and return before getting here
     case Nil => ???
   }
+
+  /**
+   * The output directory at `path`, which must exist, as an `AbstractFile`.
+   *
+   * `AbstractFile.getDirectory` takes the version of the JARs it might open since 3.10.0, which
+   * we don't need for directories, so we create the `PlainFile` it would create ourselves.
+   */
+  def directory(path: Path): AbstractFile =
+    new PlainFile(dotty.tools.io.Directory(path))
 
   def addToClasspath(classFiles: Traversable[(String, Array[Byte])],
                      dynamicClasspath: AbstractFile,

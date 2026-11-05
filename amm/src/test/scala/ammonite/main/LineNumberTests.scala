@@ -20,7 +20,7 @@ object LineNumberTests extends TestSuite {
 
     val sv = ammonite.compiler.CompilerBuilder.scalaVersion
     val isScala2 = sv.startsWith("2.")
-    val isPre3_3_4 = sv < "3.3.4"
+    val isPre3_3_4 = coursier.version.Version(sv) < coursier.version.Version("3.3.4")
 
     test("sourcecode") {
       if (isScala2) {

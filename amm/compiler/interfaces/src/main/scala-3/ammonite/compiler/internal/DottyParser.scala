@@ -1,18 +1,23 @@
-package ammonite.compiler
+package ammonite.compiler.internal
 
 import dotty.tools.dotc
 import dotc.ast.untpd
-import dotc.core.Contexts.Context
 import dotc.core.Flags
 import dotc.core.StdNames.nme
 import dotc.parsing.Parsers.{Location, Parser}
 import dotc.parsing.Tokens
-import dotc.reporting.IllegalStartOfStatement
-import dotc.util.SourceFile
 
 import scala.collection.mutable
 
-class DottyParser(source: SourceFile)(using Context) extends Parser(source) with CompatibilityParser {
+/**
+ * The dotty parser Ammonite parses user code with, which accepts things like top-level
+ * `private` definitions that dotty's own parser rejects in blocks.
+ *
+ * A trait rather than a class, as `Parser` took more constructor parameters in 3.10.0: the
+ * [[ParserMaker]] implementations mix it in the `Parser`s they create for each compiler. What
+ * it calls and overrides of `Parser` hasn't changed in the Scala 3 versions we support.
+ */
+trait DottyParser extends Parser {
 
   // From
   // https://github.com/lampepfl/dotty/blob/3.0.0-M3/
@@ -48,7 +53,7 @@ class DottyParser(source: SourceFile)(using Context) extends Parser(source) with
     while
       var empty = false
       if (in.token == Tokens.IMPORT)
-        stats ++= compatibilityImportClause()
+        stats ++= importClause()
       else if (isExprIntro)
         stats += expr(Location.InBlock)
       else if in.token == Tokens.IMPLICIT && !in.inModifierPosition() then
