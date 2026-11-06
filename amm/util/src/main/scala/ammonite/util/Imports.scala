@@ -18,18 +18,27 @@ object ScriptOutput {
    * Metadata extracted from the compilation of a single block, without the classfiles
    * but with enough information to fetch the classfiles form disk and evaluate the
    * block without compiling/parsing it
+   *
+   * @param usedEarlierDefinitions the earlier wrappers the block code uses, needed to
+   *                               run class-based blocks; `None` in caches written before
+   *                               it was recorded (such blocks get re-compiled)
    */
   case class BlockMetadata(
       id: VersionedWrapperId,
       leadingSpaces: String,
       hookInfo: ImportHookInfo,
-      finalImports: Imports
+      finalImports: Imports,
+      usedEarlierDefinitions: Option[Seq[String]] = None
   )
   case class Metadata(blockInfo: Seq[BlockMetadata])
 }
 
 case class ImportHookInfo(imports: Imports, stmts: Seq[String], trees: Seq[ImportTree])
-case class Evaluated(wrapper: Seq[Name], imports: Imports)
+case class Evaluated(
+    wrapper: Seq[Name],
+    imports: Imports,
+    usedEarlierDefinitions: Seq[String] = Nil
+)
 
 /**
  * Represents the importing of a single name in the Ammonite REPL, of the
