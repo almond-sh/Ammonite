@@ -329,10 +329,13 @@ object MainTests extends TestSuite {
 
     test("classBased") {
       def execClassBased(p: String, args: String*) =
+        execClassBasedWithHome(os.temp.dir(), p, args: _*)
+      def execClassBasedWithHome(home: os.Path, p: String, args: String*) =
         new InProcessMainMethodRunner(
           InProcessMainMethodRunner.base / "mains" / p,
           List("--class-based"),
-          args
+          args,
+          home
         )
 
       test("noMain") {
@@ -366,6 +369,24 @@ object MainTests extends TestSuite {
         val evaled = execClassBased("ObjectsOnly.sc")
         assert(evaled.success)
         assert(evaled.out.isEmpty)
+      }
+      test("multiBlock") {
+        val evaled = execClassBased("MultiBlock.sc")
+        assert(evaled.success)
+        val expected = Util.normalizeNewlines(
+          """c = 3
+            |MultiBlock null, MultiBlock_2 set
+            |""".stripMargin
+        )
+        assert(evaled.out == expected)
+      }
+      test("multiBlockMain") {
+        val evaled = execClassBased("MultiBlockMain.sc", "Alice", "-n", "2")
+        assert(evaled.success)
+        assert(evaled.out == "Hello Alice! Hello Alice!" + Util.newLine)
+        val evaled0 = execClassBased("MultiBlockMain.sc", "Bob")
+        assert(evaled0.success)
+        assert(evaled0.out == "Hello Bob!" + Util.newLine)
       }
     }
   }

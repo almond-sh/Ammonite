@@ -786,6 +786,8 @@ class Interpreter(
 
     val beforeExitHooks = interp.beforeExitHooks
 
+    def usedEarlierDefinitions = frameUsedEarlierDefinitions
+
     val repositories = interp.repositories
     val resolutionHooks = interp.resolutionHooks
 
