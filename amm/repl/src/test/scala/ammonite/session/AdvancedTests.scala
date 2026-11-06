@@ -627,7 +627,7 @@ object AdvancedTests extends TestSuite {
       else
         check.session("""
           @ extension (x: Int) def incr = x + 1
-          defined extension methods
+          defined extension method incr
 
           @ 1.incr
           res1: Int = 2
@@ -637,13 +637,19 @@ object AdvancedTests extends TestSuite {
           @   def ident = x
           @   def concat(other: String) = x ++ other
           @ }
-          defined extension methods
+          defined extension methods ident, concat
 
           @ "test".ident
           res3: String = "test"
 
           @ "test".concat("test")
           res4: String = "testtest"
+
+          @ extension (x: Int) { def double = x * 2; private def secret = x; def `+++`(y: Int) = x + y }
+          defined extension methods double, +++
+
+          @ 2.double +++ 1
+          res6: Int = 5
         """)
     }
     test("opaque-types") {

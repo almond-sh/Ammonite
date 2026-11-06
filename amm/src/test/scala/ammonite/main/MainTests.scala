@@ -73,6 +73,22 @@ object MainTests extends TestSuite {
         val err = evaled.err
         assert(!err.toLowerCase(java.util.Locale.ROOT).contains("warning"))
       }
+      test("deprecatedLanguageImportWarnsOnce") {
+        // Language imports are carried over to the next blocks of a script, but the warnings
+        // about them should only be shown in the block they're in
+        val warnsAboutNamedTuples = ammonite.compiler.CompilerBuilder.scalaVersion
+          .split('.') match {
+          case Array("3", minor, _*) => minor.toInt >= 10
+          case _ => false
+        }
+        if (warnsAboutNamedTuples) {
+          val evaled = exec("DeprecatedLanguageImport.sc")
+          assert(evaled.success)
+          assert(evaled.out.contains("Hello 1 x"))
+          val warningCount = "is now standard".r.findAllMatchIn(evaled.err).length
+          assert(warningCount == 1)
+        }
+      }
       test("multiple") {
         test("positiveNoArgs") {
           val evaled = exec("MultiMain.sc", "mainA")

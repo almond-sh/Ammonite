@@ -590,6 +590,28 @@ object ImportTests extends TestSuite {
           n: Int = 2
         """)
       }
+      test("deprecated") {
+        // Scala 3.10 warns about imports of namedTuples, standard since 3.7. The warning is
+        // only shown in the command the import is in, not in the ones it's carried over to.
+        val minorOpt = check.scalaVersion.split('.') match {
+          case Array("3", minor, _*) => Some(minor.toInt)
+          case _ => None
+        }
+        if (!minorOpt.exists(_ >= 10)) "N/A"
+        else check.session("""
+          @ import scala.language.experimental.namedTuples
+          warning: `experimental.namedTuples` is now standard
+
+          @ val t = (a = 1, b = "x")
+          warning:
+
+          @ t.b
+          warning:
+
+          @ val n = 2
+          n: Int = 2
+        """)
+      }
     }
   }
 }

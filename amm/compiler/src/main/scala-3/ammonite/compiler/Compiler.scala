@@ -175,12 +175,30 @@ class Compiler(
      * E230 is IllegalIdentifierID, matched by number as it doesn't exist in Scala 3.3 (whose
      * error numbers stop below 230), and error numbers are never reassigned.
      */
+    def isE230GeneratedCodeWarning(diag: reporting.Diagnostic): Boolean =
+      diag.msg.errorId.errorNumber == 230 &&
+        (diag.pos.point < importsLen || diag.pos.point > userCodeEnd)
+    // The language imports of the previous cells, that the preprocessor puts in each new one
+    val carriedOverSections = PositionOffsetConversion.sections(
+      new String(src, "UTF-8"),
+      Compiler.carriedOverSectionStart,
+      Compiler.carriedOverSectionEnd
+    )
+    /*
+     * Whether a diagnostic is a warning about the language imports of the previous cells, like
+     * the deprecation warning of `import scala.language.experimental.namedTuples` since Scala
+     * 3.8. It was reported in the cell the import was typed in, there's no need to report it
+     * again in every later one.
+     */
+    def isCarriedOverImportWarning(diag: reporting.Diagnostic): Boolean =
+      carriedOverSections.exists { case (start, end) =>
+        start <= diag.pos.point && diag.pos.point < end
+      }
     def isGeneratedCodeWarning(diag: reporting.Diagnostic, sourceFile: SourceFile): Boolean =
       diag.level == dotc.interfaces.Diagnostic.WARNING &&
-        diag.msg.errorId.errorNumber == 230 &&
         diag.pos.exists &&
         diag.pos.source == sourceFile &&
-        (diag.pos.point < importsLen || diag.pos.point > userCodeEnd)
+        (isE230GeneratedCodeWarning(diag) || isCarriedOverImportWarning(diag))
     // set below, before compiling anything
     var sourceFile0: SourceFile = null
 
@@ -238,20 +256,40 @@ class Compiler(
       else Right((reporter.fold(ctx.reporter.removeBufferedMessages)(_ => Nil), unit))
 
     def formatDiagnostics(diagnostics: List[reporting.Diagnostic]): List[String] = {
-      val scalaPosToScPos = PositionOffsetConversion.scalaPosToScPos(
-        new String(src).drop(importsLen),
-        0,
-        0,
-        new String(src),
-        importsLen
-      )
-      val scFile = CompilerInternals.sourceFileMaker.withContent(
-        sourceFile,
-        sourceFile.content().drop(importsLen)
-      )
+      // The user code, and the code generated after it, as users see it in error messages:
+      // without the code generated in it, like the `val res2 = ` the preprocessor puts before
+      // expressions, which it delimits with /*<amm>*/ and /*</amm>*/
+      val codeFromUserCode = new String(src, "UTF-8").drop(importsLen)
+      val generatedSections =
+        PositionOffsetConversion.sections(codeFromUserCode, "/*<amm>*/", "/*</amm>*/").toVector
+      val scContent = {
+        val b = new java.lang.StringBuilder
+        var idx = 0
+        for ((start, end) <- generatedSections) {
+          b.append(codeFromUserCode, idx, start)
+          idx = end
+        }
+        b.append(codeFromUserCode, idx, codeFromUserCode.length)
+        b.toString
+      }
+      val scFile = CompilerInternals.sourceFileMaker.withContent(sourceFile, scContent.toCharArray)
+      // Offsets in the generated sections are moved to the code that follows them, so that
+      // errors about a whole `val res2 = expr` start at `expr`
       def scalaOffsetToScOffset(scalaOffset: Int): Option[Int] =
-        scalaPosToScPos(sourceFile.offsetToLine(scalaOffset), sourceFile.column(scalaOffset)).map {
-          case (scLine, scCol) => scFile.lineToOffset(scLine) + scCol
+        if (scalaOffset < importsLen) None
+        else {
+          val offset = scalaOffset - importsLen
+          var removed = 0
+          var res = -1
+          val it = generatedSections.iterator
+          while (res < 0 && it.hasNext) {
+            val (start, end) = it.next()
+            if (offset < start) res = offset - removed
+            else if (offset < end) res = start - removed
+            else removed += end - start
+          }
+          if (res < 0) res = offset - removed
+          Some(res).filter(_ <= scContent.length)
         }
       def scalaSpanToScSpan(scalaSpan: Span): Option[Span] =
         for {
@@ -523,6 +561,13 @@ class Compiler(
   }
 
 object Compiler:
+
+  /**
+   * Comments delimiting the language imports of the previous cells that the preprocessor puts
+   * at the top level of each cell, whose warnings we don't report
+   */
+  val carriedOverSectionStart = "/*<amm-carried-over>*/"
+  val carriedOverSectionEnd = "/*</amm-carried-over>*/"
 
   /** Create empty outer store reporter */
   def newStoreReporter(): reporting.StoreReporter =

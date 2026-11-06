@@ -75,9 +75,16 @@ class Preprocessor(
         // wrapper the code wrapper puts the other ones in
         val (languageImports, otherImports) =
           imports.value.partition(LanguageImports.isPersistentLanguageImport)
+        // The language imports of the previous cells are marked, so that the compiler doesn't
+        // report again the warnings they get in each later cell, like deprecation ones
+        // (see Compiler.carriedOverSectionStart)
+        val carriedOver =
+          if (languageImports.isEmpty) ""
+          else
+            Compiler.carriedOverSectionStart + Imports(languageImports).toString +
+              Compiler.carriedOverSectionEnd + System.lineSeparator()
         val topLevelCode =
-          Imports(languageImports).toString +
-            hoisted.map(_ + System.lineSeparator()).mkString
+          carriedOver + hoisted.map(_ + System.lineSeparator()).mkString
         val (wrappedCode, importsLength, userCodeNestingLevel) = wrapCode(
           codeSource, indexedWrapper, userCode,
           printerTemplate(printer.mkString(", ")),
@@ -222,8 +229,18 @@ class Preprocessor(
       m.name
   }
 
-  private val ExtDef = DefProc("extension methods") {
-    case ext: untpd.ExtMethods => Names.EmptyTermName
+  // `defined extension method shout`, `defined extension methods ident, concat`
+  private val ExtDef = Processor { case (_, code, ext: untpd.ExtMethods) =>
+    val names = ext.methods.collect {
+      case m: untpd.DefDef if !isPrivate(m) => Name.backtickWrap(m.name.decode.toString)
+    }
+    val printer =
+      if (names.isEmpty) Nil
+      else {
+        val label = if (names.lengthCompare(1) == 0) "extension method" else "extension methods"
+        Seq(definedStr(label, names.mkString(", ")))
+      }
+    Expanded(code, printer)
   }
   private val TypeDef = DefProc("type"){ case m: untpd.TypeDef => m.name }
 
@@ -304,11 +321,10 @@ class Preprocessor(
   private val Expr = Processor {
     //Expressions are lifted to anon function applications so they will be JITed
     case (name, code, tree) =>
-      val expandedCode =
-        if (markGeneratedSections)
-          s"/*<amm>*/val $name = /*</amm>*/$code"
-        else
-          s"val $name = $code"
+      // The generated code is always marked, so that the compiler can leave it out of the code
+      // it quotes in error messages (see Compiler.compile), whose positions are those of the
+      // user code. That doesn't change the line numbers, in stack traces in particular.
+      val expandedCode = s"/*<amm>*/val $name = /*</amm>*/$code"
       Expanded(
         expandedCode,
         if (isPrivate(tree)) Nil else Seq(pprint(name))

@@ -46,6 +46,39 @@ object FailureTests extends TestSuite {
           Compilation Failed
         """)
     }
+    test("compileFailurePositions") {
+      // Errors quote the user code, not the `val res0 = ` Ammonite puts before expressions,
+      // and their positions are those of the user code (the caret lines can't be checked
+      // here, as the margins of the output are stripped)
+      if (check.scala2) "N/A"
+      else
+        check.session(s"""
+          @ vale
+          error: cmd0.sc:1:0
+          1 |vale
+
+          @ 1 + vale
+          error: cmd0.sc:1:4
+          1 |1 + vale
+
+          @ 1; vale; 2
+          error: cmd0.sc:1:3
+          1 |1; vale; 2
+
+          @ "a" +
+          @   vale
+          error: cmd0.sc:2:2
+          2 |  vale
+
+          @ 1 == "a"
+          error: cmd0.sc:1:0
+          1 |1 == "a"
+
+          @ val x = 1 + vale
+          error: cmd0.sc:1:12
+          1 |val x = 1 + vale
+        """)
+    }
     test("compilerCrash") {
       // Make sure compiler crashes provide the appropriate error
       // messaging, and the REPL continues functioning after
