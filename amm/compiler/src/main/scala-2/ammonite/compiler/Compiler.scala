@@ -44,6 +44,41 @@ trait Compiler extends ICompiler {
 object Compiler {
 
   /**
+   * A clearer error for the [[scala.reflect.internal.FatalError]] Scala compilers older than
+   * 2.12.18 and 2.13.11 throw when they load the class files of Java 21 and later (typically
+   * "bad constant pool index"), if that's what we run on.
+   */
+  private[compiler] def jdkTooRecentError(e: Throwable): Option[Throwable] = {
+    val javaVersion = System.getProperty("java.specification.version", "")
+    val scalaVersion = scala.tools.nsc.Properties.versionNumberString
+    for {
+      javaMajor <- scala.util.Try(javaVersion.stripPrefix("1.").takeWhile(_.isDigit).toInt).toOption
+      if javaMajor >= 21
+      minScalaVersion <- jdk21MinScalaVersion(scalaVersion)
+    } yield new Exception(
+      s"The Scala $scalaVersion compiler can't read the class files of Java $javaVersion, " +
+        s"it needs Scala $minScalaVersion or later. Use a more recent Scala version, " +
+        "or run Ammonite on Java 17 or earlier.",
+      e
+    )
+  }
+
+  /**
+   * The first version of the Scala series of `scalaVersion` that can read the class files
+   * of Java 21, if `scalaVersion` is older than it.
+   */
+  def jdk21MinScalaVersion(scalaVersion: String): Option[String] = {
+    def patchBelow(prefix: String, minPatch: Int) =
+      scalaVersion.startsWith(prefix) &&
+        scala.util.Try(scalaVersion.stripPrefix(prefix).takeWhile(_.isDigit).toInt)
+          .toOption
+          .exists(_ < minPatch)
+    if (patchBelow("2.12.", 18)) Some("2.12.18")
+    else if (patchBelow("2.13.", 11)) Some("2.13.11")
+    else None
+  }
+
+  /**
    * Writes files to dynamicClasspath. Needed for loading cached classes.
    */
   def addToClasspath(
@@ -260,7 +295,12 @@ object Compiler {
       // Initialize scalac to the parser phase immediately, so we can start
       // using Compiler#parse even if we haven't compiled any compilation
       // units yet due to caching
-      val run = new scalac.Run()
+      val run =
+        try new scalac.Run()
+        catch {
+          case e: scala.reflect.internal.FatalError =>
+            throw jdkTooRecentError(e).getOrElse(e)
+        }
       scalac.phase = run.parserPhase
       run.cancel()
       (vd, reporter, scalac)
