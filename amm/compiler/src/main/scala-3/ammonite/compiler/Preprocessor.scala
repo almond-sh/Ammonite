@@ -321,11 +321,10 @@ class Preprocessor(
   private val Expr = Processor {
     //Expressions are lifted to anon function applications so they will be JITed
     case (name, code, tree) =>
-      val expandedCode =
-        if (markGeneratedSections)
-          s"/*<amm>*/val $name = /*</amm>*/$code"
-        else
-          s"val $name = $code"
+      // The generated code is always marked, so that the compiler can leave it out of the code
+      // it quotes in error messages (see Compiler.compile), whose positions are those of the
+      // user code. That doesn't change the line numbers, in stack traces in particular.
+      val expandedCode = s"/*<amm>*/val $name = /*</amm>*/$code"
       Expanded(
         expandedCode,
         if (isPrivate(tree)) Nil else Seq(pprint(name))

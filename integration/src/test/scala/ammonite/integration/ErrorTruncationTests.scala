@@ -39,10 +39,10 @@ object ErrorTruncationTests extends TestSuite {
                |Compilation Failed
                |""".stripMargin
           else
-            s"""-- [E006] Not Found Error: ${replStandaloneResources / path}:1:10$sp
-               |1 |val res = doesntexist
-               |  |          ^^^^^^^^^^^
-               |  |          Not found: doesntexist
+            s"""-- [E006] Not Found Error: ${replStandaloneResources / path}:1:0$sp
+               |1 |doesntexist
+               |  |^^^^^^^^^^^
+               |  |Not found: doesntexist
                |Compilation Failed""".stripMargin
         )
       )
@@ -60,10 +60,10 @@ object ErrorTruncationTests extends TestSuite {
                |Compilation Failed
                |""".stripMargin
           else
-            s"""-- [E006] Not Found Error: ${replStandaloneResources / path}:11:12$sp
-               |11 |val res_4 = doesntexist
-               |   |            ^^^^^^^^^^^
-               |   |            Not found: doesntexist
+            s"""-- [E006] Not Found Error: ${replStandaloneResources / path}:11:0$sp
+               |11 |doesntexist
+               |   |^^^^^^^^^^^
+               |   |Not found: doesntexist
                |Compilation Failed""".stripMargin
         )
       )

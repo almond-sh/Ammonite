@@ -135,17 +135,17 @@ object LineNumberTests extends TestSuite {
                |            ^""".stripMargin
           else if (isPre3_3_4) {
             val sp = " "
-            s"""-- [E006] Not Found Error: $path:1:12$sp
-               |1 |val res_0 = printnl("OK")
-               |  |            ^^^^^^^
-               |  |            Not found: printnl""".stripMargin
+            s"""-- [E006] Not Found Error: $path:1:0$sp
+               |1 |printnl("OK")
+               |  |^^^^^^^
+               |  |Not found: printnl""".stripMargin
           }
           else {
             val sp = " "
-            s"""-- [E006] Not Found Error: $path:1:12$sp
-               |1 |val res_0 = printnl("OK")
-               |  |            ^^^^^^^
-               |  |    Not found: printnl - did you mean print? or perhaps printf or println?
+            s"""-- [E006] Not Found Error: $path:1:0$sp
+               |1 |printnl("OK")
+               |  |^^^^^^^
+               |  |Not found: printnl - did you mean print? or perhaps printf or println?
                |  |
                |  | longer explanation available when compiling with `-explain`""".stripMargin
           }
@@ -164,17 +164,17 @@ object LineNumberTests extends TestSuite {
                |          ^""".stripMargin
           else if (isPre3_3_4) {
             val sp = " "
-            s"""-- [E006] Not Found Error: $path:3:10$sp
-               |3 |val res = prinntl("Ammonite")
-               |  |          ^^^^^^^
-               |  |          Not found: prinntl""".stripMargin
+            s"""-- [E006] Not Found Error: $path:3:0$sp
+               |3 |prinntl("Ammonite")
+               |  |^^^^^^^
+               |  |Not found: prinntl""".stripMargin
           }
           else {
             val sp = " "
-            s"""-- [E006] Not Found Error: $path:3:10$sp
-               |3 |val res = prinntl("Ammonite")
-               |  |          ^^^^^^^
-               |  |    Not found: prinntl - did you mean print? or perhaps printf or println?
+            s"""-- [E006] Not Found Error: $path:3:0$sp
+               |3 |prinntl("Ammonite")
+               |  |^^^^^^^
+               |  |Not found: prinntl - did you mean print? or perhaps printf or println?
                |  |
                |  | longer explanation available when compiling with `-explain`""".stripMargin
           }

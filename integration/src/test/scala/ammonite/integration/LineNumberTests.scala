@@ -35,16 +35,16 @@ object LineNumberTests extends TestSuite {
               |val res_0 = printnl("OK")
               |            ^""".stripMargin
           else if (isPre3_3_4)
-            s"""-- [E006] Not Found Error: ${replStandaloneResources / path}:1:12$sp
-               |1 |val res_0 = printnl("OK")
-               |  |            ^^^^^^^
-               |  |            Not found: printnl
+            s"""-- [E006] Not Found Error: ${replStandaloneResources / path}:1:0$sp
+               |1 |printnl("OK")
+               |  |^^^^^^^
+               |  |Not found: printnl
                |Compilation Failed""".stripMargin
           else
-            s"""-- [E006] Not Found Error: ${replStandaloneResources / path}:1:12$sp
-               |1 |val res_0 = printnl("OK")
-               |  |            ^^^^^^^
-               |  |    Not found: printnl - did you mean print? or perhaps printf or println?
+            s"""-- [E006] Not Found Error: ${replStandaloneResources / path}:1:0$sp
+               |1 |printnl("OK")
+               |  |^^^^^^^
+               |  |Not found: printnl - did you mean print? or perhaps printf or println?
                |  |
                |  | longer explanation available when compiling with `-explain`
                |Compilation Failed""".stripMargin
