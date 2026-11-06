@@ -655,7 +655,8 @@ class Interpreter(
             VersionedWrapperId(ev.wrapper.map(_.encoded).mkString("."), tag),
             leadingSpaces,
             hookInfo,
-            ev.imports
+            ev.imports,
+            Some(ev.usedEarlierDefinitions)
           )
         }
 
@@ -673,9 +674,16 @@ class Interpreter(
           ).isInstanceOf[Res.Success[_]]
         } yield {
           val envHash = Interpreter.cacheTag(evalClassloader.classpathHash(codeSource.path))
-          if (envHash != blockMetadata.id.tag.env) {
+          // usedEarlierDefinitions is missing from caches written by older versions, and
+          // is needed to run class-based blocks: re-compile in that case
+          if (
+            envHash != blockMetadata.id.tag.env ||
+            blockMetadata.usedEarlierDefinitions.isEmpty
+          ) {
             compileRunBlock(blockMetadata.leadingSpaces, blockMetadata.hookInfo)
           } else {
+            // read by class-based wrappers when they're instantiated, via InterpBridge
+            headFrame.usedEarlierDefinitions = blockMetadata.usedEarlierDefinitions.get
             compilerManager.addToClasspath(classFiles)
             // no source here, we only have the byte code from the cache
             for (outputs <- frameOutputs)
@@ -785,6 +793,8 @@ class Interpreter(
     def watchValue[T](v: => T): T = { interp.watchValue(v); v }
 
     val beforeExitHooks = interp.beforeExitHooks
+
+    def usedEarlierDefinitions = frameUsedEarlierDefinitions
 
     val repositories = interp.repositories
     val resolutionHooks = interp.resolutionHooks

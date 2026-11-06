@@ -90,14 +90,15 @@ object ${indexedWrapperName.backticked}{
         .collect {
           case (key, Seq(path)) =>
             /*
-             * Via __amm_usedThings, that itself relies on the *-tree.txt resources generated
-             * via the AmmonitePlugin, we can know whether the current command uses things from
-             * each of the previous ones, and null-ify the references to those that are unused.
-             * That way, the unused commands don't prevent serializing this command.
+             * Via __amm_usedThings, that itself relies on the used earlier definitions
+             * reported by AmmonitePlugin (Scala 2) or AmmonitePhase (Scala 3), we can know
+             * whether the current command uses things from each of the previous ones, and
+             * null-ify the references to those that are unused. That way, the unused
+             * commands don't prevent serializing this command.
              */
             val encoded = Util.encodeScalaSourcePath(path)
             s"val ${key.backticked}: $encoded.type = " +
-              s"if (__amm_usedThings($tq${key.raw}$tq)) $encoded " +
+              s"if (__amm_usedThings == null || __amm_usedThings($tq${key.raw}$tq)) $encoded " +
               s"else null.asInstanceOf[$encoded.type]$newLine"
           case (key, values) =>
             throw new Exception(
@@ -110,8 +111,12 @@ object ${indexedWrapperName.backticked}{
       val usedThingsSet: String = {
         if (reqVals.isEmpty) ""
         else
-          "@_root_.scala.transient private val __amm_usedThings = " +
-            "_root_.ammonite.repl.ReplBridge.value.usedEarlierDefinitions.iterator.toSet"
+          // InterpBridge rather than ReplBridge, as the latter isn't set when running scripts.
+          // If no interpreter is around (unlikely), keep all references (null set).
+          "@_root_.scala.transient private val __amm_usedThings: " +
+            "_root_.scala.collection.immutable.Set[_root_.java.lang.String] = {" +
+            "val api = _root_.ammonite.interp.api.InterpBridge.value; " +
+            "if (api == null) null else api.usedEarlierDefinitions.toSet}"
       }
 
       val top = CodeWrapper.packageDirectives(pkgName) + normalizeNewlines(s"""

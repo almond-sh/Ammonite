@@ -64,6 +64,15 @@ trait InterpAPI {
 
   implicit def scalaVersion: ScalaVersion
 
+  /**
+   * Names of the earlier commands / script blocks the code being run uses.
+   *
+   * Like `repl.usedEarlierDefinitions`, but also available when running scripts, where
+   * there's no `repl`. The class-based code wrapper relies on it to null-ify references
+   * to unused earlier wrappers.
+   */
+  def usedEarlierDefinitions: Seq[String]
+
   def _compilerManager: ammonite.compiler.iface.CompilerLifecycleManager
 }
 

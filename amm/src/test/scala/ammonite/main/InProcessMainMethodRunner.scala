@@ -17,7 +17,12 @@ object InProcessMainMethodRunner {
  * JVM-level isolation between tests. But it works well enough for
  * our unit tests.
  */
-class InProcessMainMethodRunner(p: os.Path, preArgs: List[String], args: Seq[String]) {
+class InProcessMainMethodRunner(
+    p: os.Path,
+    preArgs: List[String],
+    args: Seq[String],
+    home: os.Path = os.temp.dir()
+) {
 
   val in = new ByteArrayInputStream(Array.empty[Byte])
   val err0 = new ByteArrayOutputStream()
@@ -28,7 +33,7 @@ class InProcessMainMethodRunner(p: os.Path, preArgs: List[String], args: Seq[Str
     Console.withErr(err0) {
       Console.withOut(out0) {
         ammonite.AmmoniteMain.main0(
-          List("--home", os.temp.dir().toString) ++
+          List("--home", home.toString) ++
             preArgs ++
             Seq(path.toString) ++
             args.toList,

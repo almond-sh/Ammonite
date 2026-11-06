@@ -136,7 +136,8 @@ object Evaluator {
         evaluationResult(
           pkgName ++ Seq(indexedWrapperName),
           wrapperPath,
-          newImports
+          newImports,
+          usedEarlierDefinitions
         )
       }
     }
@@ -155,7 +156,8 @@ object Evaluator {
       } yield {
         headFrame.usedEarlierDefinitions = usedEarlierDefinitions
         evalMain(cls, contextClassLoader)
-        val res = evaluationResult(pkgName :+ wrapperName, wrapperPath, newImports)
+        val res =
+          evaluationResult(pkgName :+ wrapperName, wrapperPath, newImports, usedEarlierDefinitions)
         res
       }
     }
@@ -163,7 +165,8 @@ object Evaluator {
     def evaluationResult(
         wrapperName: Seq[Name],
         internalWrapperPath: Seq[Name],
-        imports: Imports
+        imports: Imports,
+        usedEarlierDefinitions: Seq[String]
     ) = {
       Evaluated(
         wrapperName,
@@ -203,7 +206,8 @@ object Evaluator {
 
             id.copy(prefix = filledPrefix)
           }
-        )
+        ),
+        usedEarlierDefinitions
       )
     }
   }
