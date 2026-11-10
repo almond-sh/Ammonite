@@ -194,6 +194,40 @@ object EvaluatorTests extends TestSuite {
       """)
     }
 
+    test("renderedType") {
+      // Internal.renderedType gives the types the REPL prints, for libraries using Ammonite
+      if (check.scala2) "N/A"
+      else {
+        check.session("""
+          @ val l = List(1, 2)
+          l: List[Int] = List(1, 2)
+
+          @ val u: Int | String = 2
+          u: Int | String = 2
+
+          @ repl.Internal.renderedType(l, "", "").tpe
+          res2: String = "List[Int]"
+
+          @ repl.Internal.renderedType(u, "", "").tpe
+          res3: String = "Int | String"
+
+          @ repl.Internal.renderedType(u, "", "").namedTupleFields
+          res4: List[String] = List()
+        """)
+        if (!check.scalaVersion.startsWith("3.3."))
+          check.session("""
+            @ val t = (name = "a", age = 2)
+            t: (name : String, age : Int) = (name = "a", age = 2)
+
+            @ repl.Internal.renderedType(t, "", "").tpe
+            res6: String = "(name : String, age : Int)"
+
+            @ repl.Internal.renderedType(t, "", "").namedTupleFields
+            res7: List[String] = List("name", "age")
+          """)
+      }
+    }
+
     test("library") {
       // x and y pprinted value is test("non") - empty iterator' up to 2.12.6,
       // '<iterator>' since 2.12.7, hence the '?' (don't check the value)
