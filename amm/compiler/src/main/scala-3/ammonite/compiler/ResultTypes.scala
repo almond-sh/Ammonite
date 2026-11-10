@@ -24,6 +24,9 @@ import scala.util.Try
  * `(name : String, age : Int)`, rather than what pprint's `TPrint` gives), and the second
  * one by the field names of `x` if it's a named tuple, so that its value can be printed
  * along with its field names.
+ *
+ * We do the same for the calls to `Internal.renderedType(x, "", "")`, that libraries using
+ * Ammonite can add to the commands to get the types of their values.
  */
 object ResultTypes {
 
@@ -133,8 +136,9 @@ object ResultTypes {
       }
     }.toOption.flatten
 
-  private def isPrintTyped(sym: Symbol)(using Context): Boolean =
-    sym.exists && sym.name.toString == "printTyped" &&
+  /** Whether sym is the `Internal` method named `name` */
+  private def isInternal(sym: Symbol, name: String)(using Context): Boolean =
+    sym.exists && sym.name.toString == name &&
       fullName(sym.owner) == "ammonite.repl.FullReplAPI.Internal"
 
   private def isEmptyString(tree: tpd.Tree): Boolean =
@@ -168,25 +172,40 @@ object ResultTypes {
       }
     }
 
+    /** The literals to replace the empty `tpe` and `fields` arguments with */
+    private def filledArgs(value: tpd.Tree, targ: tpd.Tree, tpe: tpd.Tree, fields: tpd.Tree)(using
+        Context
+    ): List[tpd.Tree] = {
+      val valueType = typeOf(value, targ)
+      val typeStr = Try(show(valueType))
+        .orElse(Try(show(targ.tpe)))
+        .getOrElse("?")
+      val fieldsStr = namedTupleFields(valueType)
+        .fold("")(_.mkString(fieldSeparator))
+      List(
+        tpd.Literal(Constant(typeStr)).withSpan(tpe.span),
+        tpd.Literal(Constant(fieldsStr)).withSpan(fields.span)
+      )
+    }
+
     override def transform(tree: tpd.Tree)(using Context): tpd.Tree =
       tree match {
         case app @ tpd.Apply(
               fun @ tpd.TypeApply(sel, List(targ)),
               List(value, ident, custom, tpe, fields)
-            ) if isPrintTyped(sel.symbol) && isEmptyString(tpe) && isEmptyString(fields) =>
-          val valueType = typeOf(value, targ)
-          val typeStr = Try(show(valueType))
-            .orElse(Try(show(targ.tpe)))
-            .getOrElse("?")
-          val fieldsStr = namedTupleFields(valueType)
-            .fold("")(_.mkString(fieldSeparator))
-          val newArgs = List(
-            transform(value),
-            ident,
-            custom,
-            tpd.Literal(Constant(typeStr)).withSpan(tpe.span),
-            tpd.Literal(Constant(fieldsStr)).withSpan(fields.span)
-          )
+            )
+            if isInternal(sel.symbol, "printTyped") &&
+              isEmptyString(tpe) && isEmptyString(fields) =>
+          val newArgs =
+            List(transform(value), ident, custom) ::: filledArgs(value, targ, tpe, fields)
+          tpd.cpy.Apply(app)(fun, newArgs)
+        case app @ tpd.Apply(
+              fun @ tpd.TypeApply(sel, List(targ)),
+              List(value, tpe, fields)
+            )
+            if isInternal(sel.symbol, "renderedType") &&
+              isEmptyString(tpe) && isEmptyString(fields) =>
+          val newArgs = transform(value) :: filledArgs(value, targ, tpe, fields)
           tpd.cpy.Apply(app)(fun, newArgs)
         case _ =>
           super.transform(tree)

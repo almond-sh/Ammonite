@@ -205,12 +205,27 @@ object FullReplAPI {
     )(implicit
         tcolors: pprint.TPrintColors,
         classTagT: ClassTag[T] = null
-    ): Iterator[String] = {
+    ): Iterator[String] =
+      print(value, ident, custom)(renderedType(value, tpe, namedTupleFields), tcolors, classTagT)
+
+    /**
+     * The type of `value`, rendered by the compiler like for the values the REPL prints.
+     *
+     * On Scala 3, the Ammonite compiler phase fills `tpe` and `namedTupleFields`, when left
+     * empty in the code it compiles, the way it does for `printTyped`. This lets libraries
+     * using Ammonite get the same types as the ones the REPL prints, from the code they add
+     * to the commands (pprint's `TPrint` renders some Scala 3 types badly, like named tuples).
+     * `value` isn't evaluated.
+     */
+    def renderedType[T](
+        value: => T,
+        tpe: String,
+        namedTupleFields: String
+    ): FullReplAPI.RenderedType[T] = {
       val fieldNames =
         if (namedTupleFields.isEmpty) Nil
         else namedTupleFields.split(FullReplAPI.printTypedFieldSeparator, -1).toList
-      val tprint = new FullReplAPI.RenderedType[T](tpe, fieldNames)
-      print(value, ident, custom)(tprint, tcolors, classTagT)
+      new FullReplAPI.RenderedType[T](tpe, fieldNames)
     }
 
     def printDef(definitionLabel: String, ident: String) = {
