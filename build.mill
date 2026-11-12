@@ -48,7 +48,7 @@ val scala2_13Versions = 3.to(18)
 val scala3Lts = "3.3.8"
 // The Scala 3 LTS series that follows the 3.3.x one
 val scala3NextLts = "3.9.0"
-val scala3Latest = "3.10.0"
+val scala3Latest = "3.10.1"
 
 val scala2Versions = scala2_12Versions ++ scala2_13Versions
 val scala3Versions = Seq(scala3Lts, scala3NextLts, scala3Latest)
