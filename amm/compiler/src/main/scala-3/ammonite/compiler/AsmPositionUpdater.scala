@@ -11,8 +11,15 @@ object AsmPositionUpdater {
       lineShift: Int,
       delegate: asm.MethodVisitor
   ) extends asm.MethodVisitor(asm.Opcodes.ASM9, delegate) {
-    override def visitLineNumber(line: Int, start: asm.Label): Unit =
-      super.visitLineNumber(line + lineShift, start)
+    override def visitLineNumber(line: Int, start: asm.Label): Unit = {
+      val newLine = line + lineShift
+      // Lines before the user code, in the code Ammonite wraps it in, would end up
+      // negative, and be read back as large unsigned numbers by the JVM (like `cmd1.sc:65300`
+      // in stack traces). We leave them out instead, so that the JVM knows no line number
+      // for the corresponding code, and stack traces only show the file name for it.
+      if (newLine > 0)
+        super.visitLineNumber(newLine, start)
+    }
   }
 
   private class LineNumberTableClassVisitor(

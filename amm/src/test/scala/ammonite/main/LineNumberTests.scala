@@ -222,5 +222,22 @@ object LineNumberTests extends TestSuite {
         expected = s"(RuntimeCompilationErrorLineNumberTest.sc:6)"
       )
     }
+
+    test("ClassBasedRuntimeErrorLineNumberTest") - {
+      val file =
+        InProcessMainMethodRunner.base / "lineNumbers" / "ClassBasedRuntimeErrorLineNumberTest.sc"
+      val e = new InProcessMainMethodRunner(file, List("--class-based"), Nil)
+      assert(e.err.contains("(ClassBasedRuntimeErrorLineNumberTest.sc:3)"))
+      // The code wrapping the user code has no line numbers in the script,
+      // these shouldn't end up as nonsensical ones like 65400
+      if (!isScala2) {
+        val lineNumbers = "\\(ClassBasedRuntimeErrorLineNumberTest\\.sc:(\\d+)\\)".r
+          .findAllMatchIn(e.err)
+          .map(_.group(1).toInt)
+          .toVector
+        assert(lineNumbers.nonEmpty)
+        assert(lineNumbers.forall(_ <= 7))
+      }
+    }
   }
 }
