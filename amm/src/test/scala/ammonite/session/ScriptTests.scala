@@ -56,6 +56,17 @@ object ScriptTests extends TestSuite {
             r: Int = 0
             """)
         }
+        test("macroInEarlierBlock") {
+          if (check.scala2) "N/A in Scala 2"
+          else check.session(s"""
+            @ import os._
+
+            @ repl.load.exec(($printedScriptPath/"MacroInEarlierBlock.sc").toNIO)
+
+            @ val r = res
+            r: String = "3"
+            """)
+        }
         test("annotation") {
           check.session(s"""
             @ import os._
@@ -250,6 +261,17 @@ object ScriptTests extends TestSuite {
 
             @ val r = res
             r: Int = 0
+            """)
+        }
+        test("macroInEarlierBlock") {
+          if (check.scala2) "N/A in Scala 2"
+          else check.session(s"""
+            @ import os._
+
+            @ interp.load.module(($printedScriptPath/"MacroInEarlierBlock.sc").toNIO)
+
+            @ val r = res
+            r: String = "3"
             """)
         }
         test("annotation") {
