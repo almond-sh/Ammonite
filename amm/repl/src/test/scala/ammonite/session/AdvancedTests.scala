@@ -622,6 +622,33 @@ object AdvancedTests extends TestSuite {
           fooOrd: Ordering[Foo] = <given>
         """)
     }
+    test("context-functions") {
+      // Printing these vals mustn't apply them, which needs a given Int
+      if (check.scala2) "N/A"
+      else
+        check.session("""
+          @ val cf: Int ?=> String = summon[Int].toString
+          cf: (Int) ?=> String = ?
+
+          @ type Ctx[A] = Int ?=> A
+          defined type Ctx
+
+          @ val cf2: Ctx[String] = (summon[Int] + 1).toString
+          cf2: Ctx[String] = ?
+
+          @ val cf3 = (n: Int) ?=> (n + 2).toString
+          cf3: (Int) ?=> String = ?
+
+          @ lazy val cf4: Int ?=> String = (summon[Int] + 3).toString
+          cf4: (Int) ?=> String = <lazy>
+
+          @ given Int = 1
+          given_Int: Int = <given>
+
+          @ (cf, cf2, cf3, cf4)
+          res6: (String, String, String, String) = ("1", "2", "3", "4")
+        """)
+    }
     test("extension-methods") {
       if (scala2) "N/A"
       else
