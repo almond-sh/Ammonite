@@ -282,7 +282,18 @@ class Parsers extends IParser {
   ): Either[String, IndexedSeq[(String, Seq[String])]] =
     scriptBlocksWithStartIndices(rawCode, fileName)
       .left.map(_.getMessage)
-      .map(_.map(b => (b.ncomment, b.codeWithStartIndices.map(_._2))).toVector)
+      .map { blocks =>
+        blocks
+          .map { b =>
+            // Like the Scala 2 parser, put the lines of the previous blocks before the code
+            // of each block, so that the line numbers in error messages and stack traces
+            // are those of the script, rather than the ones in the block.
+            val previousLines = rawCode.iterator.take(b.startIndex).count(_ == '\n')
+            val leading = System.lineSeparator() * previousLines + b.ncomment
+            (leading, b.codeWithStartIndices.map(_._2))
+          }
+          .toVector
+      }
 
   def scriptBlocksWithStartIndices(
     rawCode: String,

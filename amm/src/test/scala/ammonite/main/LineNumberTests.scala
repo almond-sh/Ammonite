@@ -115,10 +115,10 @@ object LineNumberTests extends TestSuite {
             val firstLine = "quicort(unsorted.filter(_ < pivot)):::List(pivot):::" +
               "quicksort(unsorted.filter(_ > pivot))"
             val sp = " "
-            s"""-- [E006] Not Found Error: $path:7:4$sp
-               |7 |    $firstLine
-               |  |    ^^^^^^^
-               |  |    Not found: quicort""".stripMargin
+            s"""-- [E006] Not Found Error: $path:11:4$sp
+               |11 |    $firstLine
+               |   |    ^^^^^^^
+               |   |    Not found: quicort""".stripMargin
           }
         )
       )
@@ -135,19 +135,19 @@ object LineNumberTests extends TestSuite {
                |            ^""".stripMargin
           else if (isPre3_3_4) {
             val sp = " "
-            s"""-- [E006] Not Found Error: $path:1:0$sp
-               |1 |printnl("OK")
-               |  |^^^^^^^
-               |  |Not found: printnl""".stripMargin
+            s"""-- [E006] Not Found Error: $path:14:0$sp
+               |14 |printnl("OK")
+               |   |^^^^^^^
+               |   |Not found: printnl""".stripMargin
           }
           else {
             val sp = " "
-            s"""-- [E006] Not Found Error: $path:1:0$sp
-               |1 |printnl("OK")
-               |  |^^^^^^^
-               |  |Not found: printnl - did you mean print? or perhaps printf or println?
-               |  |
-               |  | longer explanation available when compiling with `-explain`""".stripMargin
+            s"""-- [E006] Not Found Error: $path:14:0$sp
+               |14 |printnl("OK")
+               |   |^^^^^^^
+               |   |Not found: printnl - did you mean print? or perhaps printf or println?
+               |   |
+               |   | longer explanation available when compiling with `-explain`""".stripMargin
           }
         )
       )
@@ -164,19 +164,19 @@ object LineNumberTests extends TestSuite {
                |          ^""".stripMargin
           else if (isPre3_3_4) {
             val sp = " "
-            s"""-- [E006] Not Found Error: $path:3:0$sp
-               |3 |prinntl("Ammonite")
-               |  |^^^^^^^
-               |  |Not found: prinntl""".stripMargin
+            s"""-- [E006] Not Found Error: $path:30:0$sp
+               |30 |prinntl("Ammonite")
+               |   |^^^^^^^
+               |   |Not found: prinntl""".stripMargin
           }
           else {
             val sp = " "
-            s"""-- [E006] Not Found Error: $path:3:0$sp
-               |3 |prinntl("Ammonite")
-               |  |^^^^^^^
-               |  |Not found: prinntl - did you mean print? or perhaps printf or println?
-               |  |
-               |  | longer explanation available when compiling with `-explain`""".stripMargin
+            s"""-- [E006] Not Found Error: $path:30:0$sp
+               |30 |prinntl("Ammonite")
+               |   |^^^^^^^
+               |   |Not found: prinntl - did you mean print? or perhaps printf or println?
+               |   |
+               |   | longer explanation available when compiling with `-explain`""".stripMargin
           }
         )
       )
@@ -228,6 +228,7 @@ object LineNumberTests extends TestSuite {
         InProcessMainMethodRunner.base / "lineNumbers" / "ClassBasedRuntimeErrorLineNumberTest.sc"
       val e = new InProcessMainMethodRunner(file, List("--class-based"), Nil)
       assert(e.err.contains("(ClassBasedRuntimeErrorLineNumberTest.sc:3)"))
+      assert(e.err.contains("(ClassBasedRuntimeErrorLineNumberTest.sc:7)"))
       // The code wrapping the user code has no line numbers in the script,
       // these shouldn't end up as nonsensical ones like 65400
       if (!isScala2) {
