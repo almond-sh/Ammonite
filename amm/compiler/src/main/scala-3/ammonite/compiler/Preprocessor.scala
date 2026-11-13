@@ -246,14 +246,27 @@ class Preprocessor(
         )
       }
 
-  private val ObjectDef = DefProc("object"){case m: untpd.ModuleDef => m.name}
+  /**
+   * The name of an anonymous given with a body, like `given Show[Int] with { ... }`
+   * (an object) or `given [T]: Show[List[T]] with { ... }` (a class), named like the
+   * compiler does, `given_Show_Int` or `given_Show_List`
+   */
+  private def anonymousGivenName(mods: untpd.Modifiers, name: Names.Name, impl: untpd.Tree) =
+    if (name.isEmpty && mods.flags.is(Flags.Given)) {
+      given Context = ctx
+      CompilerInternals.givenNames.inventGivenName(impl)
+    } else name
+
+  private val ObjectDef = DefProc("object"){
+    case m: untpd.ModuleDef => anonymousGivenName(m.mods, m.name, m.impl)
+  }
   private val EnumDef = DefProc("enum"){
     case m: untpd.TypeDef if m.isClassDef && m.mods.flags.is(Flags.Enum) =>
       m.name
   }
   private val ClassDef = DefProc("class"){
     case m: untpd.TypeDef if m.isClassDef && !m.mods.flags.is(Flags.Trait) =>
-      m.name
+      anonymousGivenName(m.mods, m.name, m.rhs)
   }
   private val TraitDef = DefProc("trait"){
     case m: untpd.TypeDef if m.isClassDef && m.mods.flags.is(Flags.Trait) =>

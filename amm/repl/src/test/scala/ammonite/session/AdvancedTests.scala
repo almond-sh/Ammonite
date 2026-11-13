@@ -620,6 +620,20 @@ object AdvancedTests extends TestSuite {
           @   new Ordering[Foo] { def compare(a: Foo, b: Foo): Int = 0 }
           @ }
           fooOrd: Ordering[Foo] = <given>
+
+          @ trait Show[T] { def show(t: T): String }
+          defined trait Show
+
+          @ given Show[Int] with { def show(n: Int) = s"int $n" }
+          defined object given_Show_Int
+
+          @ given [T](using s: Show[T]): Show[List[T]] with {
+          @   def show(l: List[T]) = l.map(s.show).mkString(", ")
+          @ }
+          defined class given_Show_List
+
+          @ summon[Show[List[Int]]].show(List(1, 2))
+          res8: String = "int 1, int 2"
         """)
     }
     test("context-functions") {
