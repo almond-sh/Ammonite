@@ -37,7 +37,8 @@ class Repl(
     warnings: Boolean,
     sessionDirectory: Option[os.Path] = None,
     semanticDbs: Boolean = false,
-    bspSocket: Option[String] = None
+    bspSocket: Option[String] = None,
+    scalacOptions: Seq[String] = Nil
 ) { repl =>
 
   require(
@@ -99,7 +100,8 @@ class Repl(
     classPathWhitelist = classPathWhitelist,
     alreadyLoadedDependencies = alreadyLoadedDependencies,
     warnings = warnings,
-    frameOutputs = frameOutputs
+    frameOutputs = frameOutputs,
+    extraScalacOptions = scalacOptions
   )
   val interp = new Interpreter(
     compilerBuilder,

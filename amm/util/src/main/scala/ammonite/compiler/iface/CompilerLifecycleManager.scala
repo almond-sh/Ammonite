@@ -31,5 +31,12 @@ abstract class CompilerLifecycleManager {
 
   def addToClasspath(classFiles: ClassFiles): Unit
 
+  /**
+   * Adds options to pass to the compiler, as text (like `-explain` or `-language:dynamics`)
+   *
+   * They're passed to the next compilers, created for the next commands or script blocks.
+   */
+  def addScalacOptions(options: Seq[String]): Unit
+
   def shutdownPressy(): Unit
 }

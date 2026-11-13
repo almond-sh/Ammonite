@@ -178,6 +178,19 @@ class Compiler(
     def isE230GeneratedCodeWarning(diag: reporting.Diagnostic): Boolean =
       diag.msg.errorId.errorNumber == 230 &&
         (diag.pos.point < importsLen || diag.pos.point > userCodeEnd)
+    /*
+     * Whether a diagnostic is about the code Ammonite generates after the user code: the
+     * printers of the values of the command, the `$main` method, the `$routes` of scripts, ...
+     * Like the deprecation warning on `class Stream` the printer of `List(1).iterator.toStream`
+     * gets, from the type of the value it prints. Warnings there are either duplicates of the
+     * ones on the user code, or about things users can't change.
+     *
+     * The code before the user code isn't all generated: it has the language imports of the
+     * command, whose warnings we keep (see isCarriedOverImportWarning for those of the
+     * previous commands).
+     */
+    def isAfterUserCodeWarning(diag: reporting.Diagnostic): Boolean =
+      diag.pos.point > userCodeEnd
     // The language imports of the previous cells, that the preprocessor puts in each new one
     val carriedOverSections = PositionOffsetConversion.sections(
       new String(src, "UTF-8"),
@@ -198,7 +211,8 @@ class Compiler(
       diag.level == dotc.interfaces.Diagnostic.WARNING &&
         diag.pos.exists &&
         diag.pos.source == sourceFile &&
-        (isE230GeneratedCodeWarning(diag) || isCarriedOverImportWarning(diag))
+        (isE230GeneratedCodeWarning(diag) || isAfterUserCodeWarning(diag) ||
+          isCarriedOverImportWarning(diag))
     // set below, before compiling anything
     var sourceFile0: SourceFile = null
 

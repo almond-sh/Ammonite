@@ -620,6 +620,47 @@ object AdvancedTests extends TestSuite {
           @   new Ordering[Foo] { def compare(a: Foo, b: Foo): Int = 0 }
           @ }
           fooOrd: Ordering[Foo] = <given>
+
+          @ trait Show[T] { def show(t: T): String }
+          defined trait Show
+
+          @ given Show[Int] with { def show(n: Int) = s"int $n" }
+          defined object given_Show_Int
+
+          @ given [T](using s: Show[T]): Show[List[T]] with {
+          @   def show(l: List[T]) = l.map(s.show).mkString(", ")
+          @ }
+          defined class given_Show_List
+
+          @ summon[Show[List[Int]]].show(List(1, 2))
+          res8: String = "int 1, int 2"
+        """)
+    }
+    test("context-functions") {
+      // Printing these vals mustn't apply them, which needs a given Int
+      if (check.scala2) "N/A"
+      else
+        check.session("""
+          @ val cf: Int ?=> String = summon[Int].toString
+          cf: (Int) ?=> String = ?
+
+          @ type Ctx[A] = Int ?=> A
+          defined type Ctx
+
+          @ val cf2: Ctx[String] = (summon[Int] + 1).toString
+          cf2: Ctx[String] = ?
+
+          @ val cf3 = (n: Int) ?=> (n + 2).toString
+          cf3: (Int) ?=> String = ?
+
+          @ lazy val cf4: Int ?=> String = (summon[Int] + 3).toString
+          cf4: (Int) ?=> String = <lazy>
+
+          @ given Int = 1
+          given_Int: Int = <given>
+
+          @ (cf, cf2, cf3, cf4)
+          res6: (String, String, String, String) = ("1", "2", "3", "4")
         """)
     }
     test("extension-methods") {
@@ -1040,6 +1081,19 @@ object AdvancedTests extends TestSuite {
           """
             @ val a$b = 1
             warning: The identifier `a$b` should not contain `$`
+          """
+        )
+      // nor are the warnings about the code printing values, like the deprecation of their
+      // type, when the user code itself doesn't warn
+      if (!check.scala2)
+        check.session(
+          """
+            @ @deprecated("old", "1.0") class Old { override def toString = "Old" }
+
+            @ @scala.annotation.nowarn def mk = new Old
+
+            @ mk
+            warning:
           """
         )
     }

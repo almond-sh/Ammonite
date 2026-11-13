@@ -73,6 +73,20 @@ trait InterpAPI {
    */
   def usedEarlierDefinitions: Seq[String]
 
+  /**
+   * The options passed to the compiler on top of the ones Ammonite passes itself: the ones
+   * passed with `--scalac-option` on the command line, and the ones added with
+   * [[addScalacOptions]].
+   */
+  def scalacOptions: Seq[String]
+
+  /**
+   * Adds options to pass to the compiler, like `-explain` or `-language:dynamics`
+   *
+   * They apply from the next REPL command or script block on.
+   */
+  def addScalacOptions(options: String*): Unit
+
   def _compilerManager: ammonite.compiler.iface.CompilerLifecycleManager
 }
 

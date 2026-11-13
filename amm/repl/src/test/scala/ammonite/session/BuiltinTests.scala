@@ -237,6 +237,23 @@ object BuiltinTests extends TestSuite {
           res3: Boolean = true
         """)
     }
+    test("addScalacOptions") {
+      check.session("""
+        @ object X extends Dynamic
+        error: extension of type scala.Dynamic needs to be enabled
+
+        @ interp.scalacOptions.isEmpty
+        res0: Boolean = true
+
+        @ interp.addScalacOptions("-language:dynamics")
+
+        @ object X extends Dynamic
+        defined object X
+
+        @ interp.scalacOptions
+        res3: Seq[String] = List("-language:dynamics")
+      """)
+    }
     test("infoLogging") {
       if (check.scala2)
         check.session("""

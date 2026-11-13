@@ -156,6 +156,7 @@ class MainRunner(
           }
       ),
       warnings = !cliConfig.core.noWarnings.value,
+      scalacOptions = cliConfig.core.scalacOptions,
       sessionDirectory = cliConfig.repl.sessionDirectory,
       semanticDbs = cliConfig.repl.semanticDb.value,
       bspSocket = cliConfig.repl.bspSocket

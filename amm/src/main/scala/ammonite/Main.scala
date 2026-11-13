@@ -91,7 +91,8 @@ case class Main(
     warnings: Boolean = false,
     sessionDirectory: Option[os.Path] = None,
     semanticDbs: Boolean = false,
-    bspSocket: Option[String] = None
+    bspSocket: Option[String] = None,
+    scalacOptions: Seq[String] = Nil
 ) {
 
   require(
@@ -151,7 +152,8 @@ case class Main(
         warnings = warnings,
         sessionDirectory = sessionDirectory,
         semanticDbs = semanticDbs,
-        bspSocket = bspSocket
+        bspSocket = bspSocket,
+        scalacOptions = scalacOptions
       )
     }
 
@@ -185,7 +187,8 @@ case class Main(
         importHooks = importHooks,
         classPathWhitelist = classPathWhitelist,
         alreadyLoadedDependencies = alreadyLoadedDependencies,
-        warnings = warnings
+        warnings = warnings,
+        extraScalacOptions = scalacOptions
       )
       val interp = new Interpreter(
         compilerBuilder,

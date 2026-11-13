@@ -147,11 +147,35 @@ object ResultTypes {
       case _ => false
     }
 
+  /**
+   * The val a context function closure applies, if `value` is one.
+   *
+   * When passed to printTyped with a context function type as expected type, a val like
+   * `val cf: Int ?=> String` gets wrapped by the compiler in a closure like
+   * `(using x: Int) ?=> cf.apply(using x)`.
+   */
+  private def closureTarget(value: tpd.Tree)(using Context): Option[tpd.Tree] = {
+    def loop(tree: tpd.Tree): Option[tpd.Tree] =
+      tree match {
+        case tpd.Apply(fun, _) => loop(fun)
+        case tpd.TypeApply(fun, _) => loop(fun)
+        case tpd.Select(qual, name) if name.toString == "apply" => loop(qual)
+        case tpd.Inlined(_, Nil, expr) => loop(expr)
+        case ref: tpd.RefTree if ref.symbol.isTerm && !ref.symbol.is(Flags.Method) =>
+          Some(ref)
+        case _ => None
+      }
+    value match {
+      case tpd.Block(List(dd: tpd.DefDef), _: tpd.Closure) => loop(dd.rhs)
+      case _ => None
+    }
+  }
+
   private def typeOf(value: tpd.Tree, targ: tpd.Tree)(using Context): Type = {
     // Like the dotty REPL, show the type of the val being printed, rather than
     // the type inferred for the type parameter of printTyped, which can be widened
     // (singleton types, for example)
-    val sym = value.symbol
+    val sym = closureTarget(value).getOrElse(value).symbol
     if (sym.exists && sym.isTerm && !sym.is(Flags.Method)) sym.info.widenExpr
     else targ.tpe
   }

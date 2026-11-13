@@ -168,15 +168,22 @@ class Preprocessor(
   // The two empty strings passed to printTyped are replaced by AmmonitePhase,
   // with the type of ident rendered by the compiler, and the names of its fields
   // if it's a named tuple (see ResultTypes).
-  private def pprintSignature(ident: String, customMsg: Option[String]): String =
+  //
+  // `tpe`, if non-empty, is passed as the type argument of printTyped (see valType).
+  private def pprintSignature(
+    ident: String,
+    customMsg: Option[String],
+    tpe: Option[String] = None
+  ): String =
     val customCode = customMsg.fold("_root_.scala.None")(x => s"""_root_.scala.Some("$x")""")
+    val typeArg = tpe.fold("")(t => s"[$t]")
     s"""
     _root_.ammonite
           .repl
           .ReplBridge
           .value
           .Internal
-          .printTyped($ident, ${Util.literalize(ident)}, $customCode, "", "")
+          .printTyped$typeArg($ident, ${Util.literalize(ident)}, $customCode, "", "")
     """
   private def definedStr(definitionLabel: String, name: String) =
     s"""
@@ -188,6 +195,37 @@ class Preprocessor(
           .printDef("$definitionLabel", ${Util.literalize(name)})
     """
   private def pprint(ident: String) = pprintSignature(ident, None)
+
+  /**
+   * The type to pass explicitly to printTyped for the val `t`, whose code is `code`.
+   *
+   * Without an explicit type, the reference to the val passed to printTyped is typed without
+   * an expected type, so that the compiler applies it if it's a context function, like
+   * `val cf: Int ?=> String`, which fails when no given `Int` is around. With its context
+   * function type as expected type, the compiler wraps it in a context function instead.
+   * We can only get that type from the code: the declared type of the val if it has one,
+   * or the parameter types of the context function literal it's assigned.
+   */
+  private def valType(code: String, t: untpd.ValDef): Option[String] = {
+    given Context = ctx
+    def text(tree: untpd.Tree): Option[String] =
+      if (tree.isEmpty || !tree.span.exists || tree.span.end > code.length) None
+      else Some(code.substring(tree.span.start, tree.span.end)).filter(_.trim.nonEmpty)
+    def contextualClosureType(rhs: untpd.Tree): Option[String] =
+      rhs match {
+        case untpd.Parens(t) => contextualClosureType(t)
+        case untpd.Block(Nil, t) => contextualClosureType(t)
+        case f: untpd.Function if untpd.isContextualClosure(f) =>
+          val paramTypes = f.args.map {
+            case p: untpd.ValDef => text(p.tpt)
+            case p => text(p)
+          }
+          if (paramTypes.exists(_.isEmpty)) None
+          else Some(paramTypes.flatten.mkString("(", ", ", ") ?=> ?"))
+        case _ => None
+      }
+    text(t.tpt).orElse(contextualClosureType(t.rhs))
+  }
 
   /**
    * Processors for declarations which all have the same shape
@@ -208,14 +246,27 @@ class Preprocessor(
         )
       }
 
-  private val ObjectDef = DefProc("object"){case m: untpd.ModuleDef => m.name}
+  /**
+   * The name of an anonymous given with a body, like `given Show[Int] with { ... }`
+   * (an object) or `given [T]: Show[List[T]] with { ... }` (a class), named like the
+   * compiler does, `given_Show_Int` or `given_Show_List`
+   */
+  private def anonymousGivenName(mods: untpd.Modifiers, name: Names.Name, impl: untpd.Tree) =
+    if (name.isEmpty && mods.flags.is(Flags.Given)) {
+      given Context = ctx
+      CompilerInternals.givenNames.inventGivenName(impl)
+    } else name
+
+  private val ObjectDef = DefProc("object"){
+    case m: untpd.ModuleDef => anonymousGivenName(m.mods, m.name, m.impl)
+  }
   private val EnumDef = DefProc("enum"){
     case m: untpd.TypeDef if m.isClassDef && m.mods.flags.is(Flags.Enum) =>
       m.name
   }
   private val ClassDef = DefProc("class"){
     case m: untpd.TypeDef if m.isClassDef && !m.mods.flags.is(Flags.Trait) =>
-      m.name
+      anonymousGivenName(m.mods, m.name, m.rhs)
   }
   private val TraitDef = DefProc("trait"){
     case m: untpd.TypeDef if m.isClassDef && m.mods.flags.is(Flags.Trait) =>
@@ -245,6 +296,7 @@ class Preprocessor(
   private val TypeDef = DefProc("type"){ case m: untpd.TypeDef => m.name }
 
   private val VarDef = Processor { case (name, code, t: untpd.ValDef) =>
+    val tpe = valType(code, t)
     Expanded(
       //Only wrap rhs in function if it is not a function
       //Wrapping functions causes type inference errors.
@@ -258,11 +310,11 @@ class Preprocessor(
         val name0 =
           if (t.name.isEmpty) CompilerInternals.givenNames.inventGivenName(t.tpt)
           else t.name
-        Seq(pprintSignature(Name.backtickWrap(name0.decode.toString), Some("<given>")))
+        Seq(pprintSignature(Name.backtickWrap(name0.decode.toString), Some("<given>"), tpe))
       }
       else if (t.mods.flags.is(Flags.Lazy))
-        Seq(pprintSignature(Name.backtickWrap(t.name.decode.toString), Some("<lazy>")))
-      else Seq(pprint(Name.backtickWrap(t.name.decode.toString)))
+        Seq(pprintSignature(Name.backtickWrap(t.name.decode.toString), Some("<lazy>"), tpe))
+      else Seq(pprintSignature(Name.backtickWrap(t.name.decode.toString), None, tpe))
     )
   }
 

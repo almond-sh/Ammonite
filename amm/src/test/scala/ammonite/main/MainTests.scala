@@ -137,6 +137,29 @@ object MainTests extends TestSuite {
       }
     }
 
+    test("scalacOptions") {
+      val script = InProcessMainMethodRunner.base / "mains" / "Dynamics.sc"
+      test("missing") {
+        val evaled = new InProcessMainMethodRunner(script, Nil, Nil)
+        assert(!evaled.success)
+        assert(evaled.err.contains("extension of type scala.Dynamic needs to be enabled"))
+      }
+      test("short") {
+        val evaled = new InProcessMainMethodRunner(script, List("-O", "-language:dynamics"), Nil)
+        assert(evaled.success)
+        assert(evaled.out.contains("Dynamics enabled"))
+      }
+      test("long") {
+        val evaled = new InProcessMainMethodRunner(
+          script,
+          List("--scalac-option", "-language:dynamics"),
+          Nil
+        )
+        assert(evaled.success)
+        assert(evaled.out.contains("Dynamics enabled"))
+      }
+    }
+
     test("args") {
       test("version") {
         // Unlike other flags, activating the version flag (if it ever appears
