@@ -57,11 +57,36 @@ class Interpreter(
   def dependencyComplete: String => (Int, Seq[String]) =
     IvyThing.completer(repositories(), verbose = verboseOutput, scalaVersion = scalaVersion)
 
+  private val addedScalacOptions = mutable.Buffer.empty[String]
+
+  /**
+   * The options users pass to the compiler: the ones we were given at start-up (with the
+   * `--scalac-option` command line option, for example), and the ones added at runtime
+   * with `interp.addScalacOptions`
+   */
+  def userScalacOptions: Seq[String] =
+    extraScalacOptions ++ addedScalacOptions
+
   /**
    * The options we pass to the compiler, other than class path related and SemanticDB ones
    */
   def scalacOptions: Seq[String] =
-    if (warnings) Seq("-deprecation", "-feature") else Seq("-nowarn")
+    (if (warnings) Seq("-deprecation", "-feature") else Seq("-nowarn")) ++ userScalacOptions
+
+  /** Adds options to pass to the compilers of the next commands or script blocks */
+  def addScalacOptions(options: Seq[String]): Unit = {
+    addedScalacOptions ++= options
+    compilerManager.addScalacOptions(options)
+  }
+
+  /**
+   * The last part of the cache tags of the compiled code: what the compiled code depends on,
+   * besides its source and class path. When users pass no options to the compiler, this
+   * is the same as before we accepted these, so that the existing caches stay valid.
+   */
+  private def compilerSettingsTag: String =
+    if (userScalacOptions.isEmpty) classPathWhitelist.hashCode().toString
+    else (classPathWhitelist, userScalacOptions).hashCode().toString
 
   private def isScala2 = scalaVersion.startsWith("2.")
 
@@ -360,7 +385,7 @@ class Interpreter(
         silent,
         evalClassloader
       )
-    } yield (res, Tag("", "", classPathWhitelist.hashCode().toString))
+    } yield (res, Tag("", "", compilerSettingsTag))
   }
 
   /**
@@ -428,7 +453,7 @@ class Interpreter(
     val tag = Tag(
       Interpreter.cacheTag(processed.code.getBytes),
       Interpreter.cacheTag(evalClassloader.classpathHash(codeSource0.path)),
-      classPathWhitelist.hashCode().toString
+      compilerSettingsTag
     )
 
     for {
@@ -481,7 +506,7 @@ class Interpreter(
             if (hardcoded) Array.empty[Byte]
             else evalClassloader.classpathHash(codeSource.path)
           ),
-          classPathWhitelist.hashCode().toString
+          compilerSettingsTag
         )
 
         val cachedScriptData = storage.classFilesListLoad(
@@ -796,6 +821,9 @@ class Interpreter(
 
     def usedEarlierDefinitions = frameUsedEarlierDefinitions
 
+    def scalacOptions = userScalacOptions
+    def addScalacOptions(options: String*) = interp.addScalacOptions(options)
+
     val repositories = interp.repositories
     val resolutionHooks = interp.resolutionHooks
 
@@ -871,7 +899,8 @@ object Interpreter {
       wrapperNamePrefix: String = "cmd",
       warnings: Boolean = false,
       pkgName: Seq[Name] = Seq(Name("ammonite"), Name("$sess")),
-      frameOutputs: Option[FrameOutputs] = None
+      frameOutputs: Option[FrameOutputs] = None,
+      extraScalacOptions: Seq[String] = Nil
   )
 
   val predefImports = Imports(

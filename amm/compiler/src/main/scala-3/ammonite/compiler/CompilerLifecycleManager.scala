@@ -43,6 +43,7 @@ class CompilerLifecycleManager(
     val onCompilerInit = mutable.Buffer.empty[DottyCompiler => Unit]
     val onSettingsInit = mutable.Buffer.empty[FreshContext => Unit] // TODO Pass a SettingsState too
     var preConfiguredSettingsChanged: Boolean = false
+    val addedSettings = mutable.Buffer.empty[String]
     var compilationCount = 0
     var (lastFrame, lastFrameVersion) = (headFrame, headFrame.version)
   }
@@ -93,7 +94,7 @@ class CompilerLifecycleManager(
         classPathWhitelist,
         dependencyCompleteOpt = dependencyCompleteOpt,
         contextInit = c => onSettingsInit.foreach(_(c)),
-        settings = initialSettings
+        settings = initialSettings ++ addedSettings
       )
       onCompilerInit.foreach(_(compiler.compiler))
 
@@ -138,6 +139,12 @@ class CompilerLifecycleManager(
   def preConfigureCompiler(callback: FreshContext => Unit) =
     synchronized {
       onSettingsInit.append(callback)
+      preConfiguredSettingsChanged = true
+    }
+
+  def addScalacOptions(options: Seq[String]): Unit =
+    synchronized {
+      addedSettings ++= options
       preConfiguredSettingsChanged = true
     }
 

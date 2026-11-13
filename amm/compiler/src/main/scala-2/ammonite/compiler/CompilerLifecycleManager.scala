@@ -42,6 +42,7 @@ class CompilerLifecycleManager(
     val onCompilerInit = mutable.Buffer.empty[scala.tools.nsc.Global => Unit]
     val onSettingsInit = mutable.Buffer.empty[scala.tools.nsc.Settings => Unit]
     var preConfiguredSettingsChanged: Boolean = false
+    val addedSettings = mutable.Buffer.empty[String]
     var pressy: Pressy = _
     var compilationCount = 0
     var (lastFrame, lastFrameVersion) = (headFrame, headFrame.version)
@@ -94,10 +95,11 @@ class CompilerLifecycleManager(
       // Otherwise activating autocomplete makes the presentation compiler mangle
       // the shared settings and makes the main compiler sad
       val settings = new Settings
+      val allSettings = initialSettings ++ addedSettings
       val (success, trailingSettings) =
-        settings.processArguments(initialSettings.toList, processAll = true)
+        settings.processArguments(allSettings.toList, processAll = true)
       if (!success)
-        System.err.println(s"Error processing initial settings ${initialSettings.mkString(" ")}")
+        System.err.println(s"Error processing initial settings ${allSettings.mkString(" ")}")
       onSettingsInit.foreach(_(settings))
 
       val initialClassPath = Classpath.classpath(initialClassLoader)
@@ -169,6 +171,12 @@ class CompilerLifecycleManager(
   def preConfigureCompiler(callback: scala.tools.nsc.Settings => Unit) =
     synchronized {
       onSettingsInit.append(callback)
+      preConfiguredSettingsChanged = true
+    }
+
+  def addScalacOptions(options: Seq[String]): Unit =
+    synchronized {
+      addedSettings ++= options
       preConfiguredSettingsChanged = true
     }
 

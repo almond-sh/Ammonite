@@ -73,7 +73,14 @@ object Config {
       @arg(name = "version", short = 'v', doc = "Show Ammonite's version")
       showVersion: Flag,
       @arg(name = "no-warn", doc = "Disable compiler warnings")
-      noWarnings: Flag
+      noWarnings: Flag,
+      @arg(
+        name = "scalac-option",
+        short = 'O',
+        doc = """Pass an option to the compiler, like -explain or -language:dynamics. Can be
+        repeated. Options can also be added at runtime, with interp.addScalacOptions"""
+      )
+      scalacOptions: Seq[String] = Nil
   )
   implicit val coreParser: ParserForClass[Core] = ParserForClass[Core]
 
