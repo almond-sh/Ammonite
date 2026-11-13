@@ -1069,6 +1069,19 @@ object AdvancedTests extends TestSuite {
             warning: The identifier `a$b` should not contain `$`
           """
         )
+      // nor are the warnings about the code printing values, like the deprecation of their
+      // type, when the user code itself doesn't warn
+      if (!check.scala2)
+        check.session(
+          """
+            @ @deprecated("old", "1.0") class Old { override def toString = "Old" }
+
+            @ @scala.annotation.nowarn def mk = new Old
+
+            @ mk
+            warning:
+          """
+        )
     }
 
     test("package input") {
