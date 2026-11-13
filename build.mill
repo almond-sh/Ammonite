@@ -91,6 +91,54 @@ def isScala2_12_10OrLater(sv: String): Boolean = {
 val fullCrossScalaVersions = scala2Versions ++ scala3Versions
 
 /**
+ * The shorter versions a full Scala version can be referred to by from the command line, in
+ * cross modules having a single instance for them (see [[ShortCrossNames]]): its binary
+ * version, like `2.13` or `3.3`, and, for Scala 3, `3`.
+ */
+def shortScalaVersions(sv: String): Seq[String] =
+  sv.split('.') match {
+    case Array("3", minor, _*) => Seq(s"3.$minor", "3")
+    case Array(major, minor, _, _*) => Seq(s"$major.$minor")
+    case _ => Nil
+  }
+
+/**
+ * Lets the instances of a cross module over Scala versions be referred to by shorter versions
+ * from the command line, when that's not ambiguous: its Scala 2.12 one as `foo.2_12` or
+ * `foo[2.12]` rather than `foo.2_12_8` / `foo[2.12.8]` when it has a single 2.12 instance, its
+ * Scala 3.3 one as `foo.3_3` when it has a single 3.3 one, or even as `foo.3` when it has a
+ * single Scala 3 instance, etc. (see [[shortScalaVersions]]).
+ *
+ * Mill resolves the cross segments of the command line - `foo[2.12]`, or `foo.2_12`, that it
+ * tries as `foo[2.12]` when `foo` has no `2_12` child - by looking them up in
+ * [[mill.api.Cross.segmentsToModules]], that we add the short versions to here. These map to
+ * the very module instances of the full versions, so that these keep their full version in
+ * their segments, that Mill uses for their output directories and in its output. The `__` / `_`
+ * wildcards rely on [[mill.api.Cross.items]] instead, so that they don't list the instances
+ * under their short versions too, and while `foo[_]` goes through
+ * [[mill.api.Cross.segmentsToModules]], Mill de-duplicates the modules it gets that way.
+ */
+trait ShortCrossNames[M <: Cross.Module[?]] extends Cross[M] {
+  override val segmentsToModules: collection.MapView[List[String], M] = {
+    val map = new collection.mutable.LinkedHashMap[List[String], () => M]
+    for (item <- items)
+      map(item.crossSegments) = item.module
+    val aliases = items
+      .flatMap { item =>
+        item.crossSegments match {
+          case List(sv) => shortScalaVersions(sv).map(List(_) -> item)
+          case _ => Nil
+        }
+      }
+      .filter { case (alias, _) => !map.contains(alias) }
+    val aliasCounts = aliases.groupMapReduce(_._1)(_ => 1)(_ + _)
+    for ((alias, item) <- aliases if aliasCounts(alias) == 1)
+      map(alias) = item.module
+    map.view.mapValues(_())
+  }
+}
+
+/**
  * A source directory of `amm.compiler.internal`, and the full Scala versions it is written for.
  *
  * The classes in it are named after the directory - `scala-2.13.12+` holds `ReporterMaker2_13_12`,
@@ -722,6 +770,7 @@ trait AmmDependenciesResourceFileModule extends JavaModule {
 }
 
 object terminal extends Cross[TerminalModule](binCrossScalaVersions)
+    with ShortCrossNames[TerminalModule]
 trait TerminalModule extends AmmModule {
   def mvnDeps: T[Seq[Dep]] = Task {
     super.mvnDeps() ++ Seq(
@@ -734,8 +783,10 @@ trait TerminalModule extends AmmModule {
   }
 }
 
-object amm extends Cross[MainModule](binCrossScalaVersions) {
+object amm extends Cross[MainModule](binCrossScalaVersions)
+    with ShortCrossNames[MainModule] {
   object util extends Cross[UtilModule](binCrossScalaVersions)
+      with ShortCrossNames[UtilModule]
   trait UtilModule extends AmmModule {
     def moduleDeps: Seq[PublishModule] = Seq()
     def mvnDeps: T[Seq[Dep]] = Task {
@@ -756,7 +807,8 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
    * Scala compiler's internals from one patch release to the next lives in
    * [[amm.compiler.internal]], whose classes this module's JAR bundles as is.
    */
-  object compiler extends Cross[CompilerModule](binCrossScalaVersions) {
+  object compiler extends Cross[CompilerModule](binCrossScalaVersions)
+      with ShortCrossNames[CompilerModule] {
 
     /**
      * The interfaces between `amm.compiler` and the Scala compiler internals that move
@@ -766,6 +818,7 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
      * compiles against them. Not published.
      */
     object interfaces extends Cross[CompilerInterfacesModule](binCrossScalaVersions)
+        with ShortCrossNames[CompilerInterfacesModule]
     trait CompilerInterfacesModule extends AmmInternalModule {
       def moduleDeps: Seq[JavaModule] = Seq(amm.util())
       def mvnDeps: T[Seq[Dep]] = Task {
@@ -783,6 +836,7 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
      * Not published.
      */
     object internal extends Cross[CompilerInternalModule](fullCrossScalaVersions)
+        with ShortCrossNames[CompilerInternalModule]
     trait CompilerInternalModule extends AmmInternalModule {
       def moduleDeps: Seq[JavaModule] = Seq(amm.util(), amm.compiler.interfaces())
       def mvnDeps: T[Seq[Dep]] = Task {
@@ -869,9 +923,11 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
 //    )
 //  }
 
-  object repl extends Cross[ReplModule](binCrossScalaVersions) {
+  object repl extends Cross[ReplModule](binCrossScalaVersions)
+      with ShortCrossNames[ReplModule] {
 
     object api extends Cross[ReplApiModule](binCrossScalaVersions)
+        with ShortCrossNames[ReplApiModule]
     trait ReplApiModule extends AmmModule
         with AmmDependenciesResourceFileModule {
       def dependencyResourceFileName = "amm-dependencies.txt"
@@ -960,6 +1016,7 @@ object amm extends Cross[MainModule](binCrossScalaVersions) {
     }
 
     object test extends Cross[ReplTestModule](fullScalaVersionsFor(crossScalaVersion))
+        with ShortCrossNames[ReplTestModule]
     trait ReplTestModule extends Cross.Module[String]
         with AmmTests with AmmDependenciesResourceFileModule {
       def testModuleName = "test"
@@ -1073,6 +1130,7 @@ trait MainModule extends AmmModule {
   }
 
   object test extends Cross[MainTestModule](fullScalaVersionsFor(crossScalaVersion))
+      with ShortCrossNames[MainTestModule]
   trait MainTestModule extends Cross.Module[String] with AmmTests {
     def testModuleName = "test"
     def crossScalaVersion: String = crossValue
@@ -1149,6 +1207,7 @@ trait MainModule extends AmmModule {
  * one specific Scala version, so this is built once per full Scala version. Not published.
  */
 object shell extends Cross[ShellModule](fullCrossScalaVersions)
+    with ShortCrossNames[ShellModule]
 trait ShellModule extends AmmInternalModule {
   def moduleDeps: Seq[JavaModule] = Seq(amm())
   def runModuleDeps: Seq[JavaModule] = Seq(amm.compiler())
@@ -1267,6 +1326,7 @@ def sbtBinDir: T[String] = Task {
 }
 
 object integration extends Cross[IntegrationModule](fullCrossScalaVersions)
+    with ShortCrossNames[IntegrationModule]
 trait IntegrationModule extends AmmInternalModule {
   def moduleDeps: Seq[JavaModule] = Seq(amm(), amm.compiler())
   // amm.compiler is built once per binary Scala version, and asks for the oldest full version
