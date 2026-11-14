@@ -235,7 +235,8 @@ class Compiler(
             val pos = Some(diag.position).filter(_.isPresent).map(_.get)
             val start = pos.fold(0)(_.start)
             val end = pos.fold(new String(src, "UTF-8").length)(_.end)
-            val msg = ICompilerBuilder.Message(severity, start, end, diag.message)
+            val msg =
+              ICompilerBuilder.Message(severity, start, end, Compiler.withUserPaths(diag.message))
             rep(msg)
           }
         }
@@ -250,12 +251,19 @@ class Compiler(
     )
 
     val semanticDbEnabled = run.runContext.settings.Xsemanticdb.value(using run.runContext)
-    val sourceFile =
-      if (semanticDbEnabled)
+    // The source the compiler gets, and the one users see in messages
+    val (sourceFile, userSourceFile) =
+      if (semanticDbEnabled) {
         // semanticdb needs the sources to be written on disk, so we assume they're there already
-        CompilerInternals.sourceFileMaker.inSourceRoot(fileName)(using run.runContext)
-      else
-        CompilerInternals.sourceFileMaker.virtual(fileName, src)
+        // (each compilation has its own file then)
+        val sourceFile =
+          CompilerInternals.sourceFileMaker.inSourceRoot(fileName)(using run.runContext)
+        (sourceFile, sourceFile)
+      } else
+        (
+          CompilerInternals.sourceFileMaker.virtual(Compiler.compilationPath(fileName), src),
+          CompilerInternals.sourceFileMaker.virtual(fileName, src)
+        )
     sourceFile0 = sourceFile
 
     implicit val ctx: Context = run.runContext.withSource(sourceFile)
@@ -286,7 +294,8 @@ class Compiler(
         b.append(codeFromUserCode, idx, codeFromUserCode.length)
         b.toString
       }
-      val scFile = CompilerInternals.sourceFileMaker.withContent(sourceFile, scContent.toCharArray)
+      val scFile =
+        CompilerInternals.sourceFileMaker.withContent(userSourceFile, scContent.toCharArray)
       // Offsets in the generated sections are moved to the code that follows them, so that
       // errors about a whole `val res2 = expr` start at `expr`
       def scalaOffsetToScOffset(scalaOffset: Int): Option[Int] =
@@ -311,23 +320,31 @@ class Compiler(
           scEnd <- scalaOffsetToScOffset(scalaSpan.end)
           scPoint <- scalaOffsetToScOffset(scalaSpan.point)
         } yield Span(scStart, scEnd, scPoint)
-      def scalaSourcePosToScSourcePos(sourcePos: SourcePosition): Option[SourcePosition] =
-        if (sourcePos.source == sourceFile)
-          scalaSpanToScSpan(sourcePos.span).map { scSpan =>
-            SourcePosition(scFile, scSpan, sourcePos.outer)
-          }
-        else
-          None
-      def scalaDiagnosticToScDiagnostic(diag: reporting.Diagnostic): Option[reporting.Diagnostic] =
-        scalaSourcePosToScSourcePos(diag.pos).map { scPos =>
-          new reporting.Diagnostic(diag.msg, scPos, diag.level)
+      // Positions in sourceFile, and the positions they were inlined at, are moved to the
+      // user code if they're in it, and to userSourceFile else
+      def scalaSourcePosToScSourcePos(sourcePos: SourcePosition): SourcePosition =
+        if (sourcePos == null || !sourcePos.exists) sourcePos
+        else {
+          val outer = scalaSourcePosToScSourcePos(sourcePos.outer)
+          if (sourcePos.source == sourceFile)
+            scalaSpanToScSpan(sourcePos.span) match {
+              case Some(scSpan) => SourcePosition(scFile, scSpan, outer)
+              case None => SourcePosition(userSourceFile, sourcePos.span, outer)
+            }
+          else if (outer eq sourcePos.outer) sourcePos
+          else sourcePos.copy(outer = outer)
         }
+      def scalaDiagnosticToScDiagnostic(diag: reporting.Diagnostic): reporting.Diagnostic = {
+        val scPos = scalaSourcePosToScSourcePos(diag.pos)
+        if (scPos eq diag.pos) diag
+        else new reporting.Diagnostic(diag.msg, scPos, diag.level)
+      }
 
       diagnostics
         .filter(d => !isGeneratedCodeWarning(d, sourceFile))
-        .map(d => scalaDiagnosticToScDiagnostic(d).getOrElse(d))
+        .map(scalaDiagnosticToScDiagnostic)
         .map(formatError)
-        .map(_.msg.toString)
+        .map(d => Compiler.withUserPaths(d.msg.toString))
     }
 
     result match {
@@ -349,7 +366,8 @@ class Compiler(
         // outputDir is None here, dynamicClassPath should already correspond to an on-disk directory
         Compiler.addToClasspath(classes, dynamicClassPath, None)
         val lineShift = PositionOffsetConversion.offsetToPos(new String(src)).apply(importsLen).line
-        val mappings = Map(sourceFile.file.name -> (sourceFile.file.name, -lineShift))
+        // also gives the class files the name of the user source file
+        val mappings = Map(sourceFile.file.name -> (userSourceFile.file.name, -lineShift))
         val postProcessedClasses = classes.toVector.map {
           case (path, byteCode) if path.endsWith(".class") =>
             val updatedByteCodeOpt = AsmPositionUpdater.postProcess(
@@ -582,6 +600,40 @@ object Compiler:
    */
   val carriedOverSectionStart = "/*<amm-carried-over>*/"
   val carriedOverSectionEnd = "/*</amm-carried-over>*/"
+
+  private val compilationCount = new java.util.concurrent.atomic.AtomicInteger
+
+  /**
+   * The path of the source the compiler gets for code users see at `path`.
+   *
+   * It has a directory of its own, so that each compilation has its own path, but keeps the
+   * name of the file. The blocks of a script are compiled one after the other under its path,
+   * and when the compiler enters a package, it unlinks its classes that an earlier compilation
+   * of the same path defined (`PackageClassDenotation#unlinkFromFile`), like the wrappers of
+   * the earlier blocks. That left the later blocks with stale symbols, like in what they inline
+   * from the earlier blocks, and macros got `scala.Any` trees as arguments.
+   *
+   * 3.4.2 to 3.9.x didn't unlink anything, as they take the files of classes from their
+   * compilation units, to which we gave no info, but earlier and later versions do.
+   */
+  def compilationPath(path: String): String = {
+    val nameStart =
+      math.max(path.lastIndexOf('/'), path.lastIndexOf(java.io.File.separatorChar)) + 1
+    val separator = if (nameStart == 0) '/' else path.charAt(nameStart - 1)
+    val dir = compilationDirPrefix + compilationCount.incrementAndGet() + "$"
+    path.substring(0, nameStart) + dir + separator + path.substring(nameStart)
+  }
+  private def compilationDirPrefix = "$amm-compilation-"
+  private val compilationDir =
+    (java.util.regex.Pattern.quote(compilationDirPrefix) + """\d+\$[/\\]""").r
+
+  /**
+   * Removes the directories [[compilationPath]] adds from a message, in case the compiler
+   * mentions a path we didn't change back to the user one
+   */
+  def withUserPaths(message: String): String =
+    if (message.contains(compilationDirPrefix)) compilationDir.replaceAllIn(message, "")
+    else message
 
   /** Create empty outer store reporter */
   def newStoreReporter(): reporting.StoreReporter =
