@@ -175,7 +175,8 @@ class Preprocessor(
     customMsg: Option[String],
     tpe: Option[String] = None
   ): String =
-    val customCode = customMsg.fold("_root_.scala.None")(x => s"""_root_.scala.Some("$x")""")
+    val customCode =
+      customMsg.fold("_root_.scala.None")(x => s"""_root_.scala.Some(${Util.literalize(x)})""")
     val typeArg = tpe.fold("")(t => s"[$t]")
     s"""
     _root_.ammonite
@@ -312,8 +313,10 @@ class Preprocessor(
           else t.name
         Seq(pprintSignature(Name.backtickWrap(name0.decode.toString), Some("<given>"), tpe))
       }
-      else if (t.mods.flags.is(Flags.Lazy))
-        Seq(pprintSignature(Name.backtickWrap(t.name.decode.toString), Some("<lazy>"), tpe))
+      else if (t.mods.flags.is(Flags.Lazy)) {
+        val ident = Name.backtickWrap(t.name.decode.toString)
+        Seq(pprintSignature(ident, Some(lazyValuePlaceholder), tpe))
+      }
       else Seq(pprintSignature(Name.backtickWrap(t.name.decode.toString), None, tpe))
     )
   }
@@ -332,7 +335,8 @@ class Preprocessor(
             case untpd.Ident(name) =>
               val decoded = name.decode.toString
               if (decoded.contains("$")) Nil
-              else if (isLazy) Seq(pprintSignature(Name.backtickWrap(decoded), Some("<lazy>")))
+              else if (isLazy)
+                Seq(pprintSignature(Name.backtickWrap(decoded), Some(lazyValuePlaceholder)))
               else Seq(pprint(Name.backtickWrap(decoded)))
             case _ => Nil // can this happen?
           }
@@ -363,6 +367,13 @@ class Preprocessor(
               .printImport(${Util.literalize(imported)})
         """
     )
+
+  /**
+   * What's printed in place of the value of lazy vals, like `<lazy>` in `x: Int = <lazy>`
+   *
+   * Override it to print something else.
+   */
+  protected def lazyValuePlaceholder: String = "<lazy>"
 
   private val Export = Processor {
     case (name, code, tree: untpd.Export) =>

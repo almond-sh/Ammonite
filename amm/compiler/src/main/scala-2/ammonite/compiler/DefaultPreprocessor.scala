@@ -61,7 +61,9 @@ class DefaultPreprocessor(
   }
 
   def pprintSignature(ident: String, customMsg: Option[String]) = {
-    val customCode = customMsg.fold("_root_.scala.None")(x => s"""_root_.scala.Some("$x")""")
+    val customCode = customMsg.fold("_root_.scala.None") { x =>
+      s"""_root_.scala.Some(${fastparse.internal.Util.literalize(x)})"""
+    }
     s"""
     _root_.ammonite
           .repl
@@ -114,9 +116,16 @@ class DefaultPreprocessor(
       // it through a full compilation
       if (isPrivate(t) || t.name.decoded.contains("$")) Nil
       else if (!t.mods.hasFlag(Flags.LAZY)) Seq(pprint(Name.backtickWrap(t.name.decoded)))
-      else Seq(s"""${pprintSignature(Name.backtickWrap(t.name.decoded), Some("<lazy>"))}""")
+      else Seq(pprintSignature(Name.backtickWrap(t.name.decoded), Some(lazyValuePlaceholder)))
     )
   }
+
+  /**
+   * What's printed in place of the value of lazy vals, like `<lazy>` in `x: Int = <lazy>`
+   *
+   * Override it to print something else.
+   */
+  protected def lazyValuePlaceholder: String = "<lazy>"
 
   val Import = Processor {
     case (name, code, tree: G#Import) =>
