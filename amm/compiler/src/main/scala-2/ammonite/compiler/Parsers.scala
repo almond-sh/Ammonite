@@ -1,7 +1,7 @@
 package ammonite.compiler
 
 import ammonite.compiler.iface.{Parser => IParser, _}
-import ammonite.util.ImportTree
+import ammonite.util.{ImportHookPlaceholder, ImportTree}
 import ammonite.util.Util.{CodeSource, newLine, windowsPlatform}
 
 import scala.collection.mutable
@@ -166,7 +166,7 @@ object Parsers extends IParser {
               val length = importTree.end - importTree.start
               currentStmt = currentStmt.patch(
                 importTree.start,
-                (importTree.prefix(0) + ".$").padTo(length, ' '),
+                ImportHookPlaceholder(importTree.prefix(0)).padTo(length, ' '),
                 length
               )
               val importTree0 = importTree.copy(

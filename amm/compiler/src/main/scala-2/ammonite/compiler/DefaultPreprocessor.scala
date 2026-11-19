@@ -127,19 +127,18 @@ class DefaultPreprocessor(
           val Array(keyword, body) = code.split(" ", 2)
           body
       }
-      Expanded(
-        code,
-        Seq(
-          s"""
+      // Nothing is printed for the placeholders of import hooks (see ImportHookPlaceholder)
+      val printers = ImportHookPlaceholder.strip(body).toSeq.map { imported =>
+        s"""
         _root_.ammonite
               .repl
               .ReplBridge
               .value
               .Internal
-              .printImport(${fastparse.internal.Util.literalize(body)})
+              .printImport(${fastparse.internal.Util.literalize(imported)})
         """
-        )
-      )
+      }
+      Expanded(code, printers)
   }
 
   val Expr = Processor {

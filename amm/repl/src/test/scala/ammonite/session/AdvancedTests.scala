@@ -851,13 +851,24 @@ object AdvancedTests extends TestSuite {
         """
       )
     }
+    test("hook and other imports") {
+      // the placeholders of import hooks (import $ivy.$) aren't printed
+      check.session(
+        """
+          @ import $ivy.`org.typelevel::cats-kernel:2.6.1`, scala.collection.mutable
+          import scala.collection.mutable
+
+          @ import scala.collection.{mutable, immutable}, $ivy.`org.typelevel::cats-kernel:2.6.1`, cats.kernel._
+          import scala.collection.{mutable, immutable}, cats.kernel._
+        """
+      )
+    }
     test("hook in block") {
       check.session(
         """
           @ {
           @   import $ivy.`org.typelevel::cats-kernel:2.6.1`
           @ }
-          import $ivy.$
 
           @ import cats.kernel._
           import cats.kernel._
