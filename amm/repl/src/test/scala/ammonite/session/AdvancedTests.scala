@@ -1153,6 +1153,14 @@ object AdvancedTests extends TestSuite {
           """
         )
     }
+    test("load prints no compiling messages") {
+      // unlike scripts, whose path is printed, as in "Compiling /path/to/script.sc"
+      for (repl <- check.repls) {
+        val (res, _, _, _, _, info) = repl.run("repl.load(\"val x = 1\\n@\\nval y = 2\")", 0)
+        assert(res.isSuccess)
+        assert(info == "")
+      }
+    }
     test("eval package input") {
       val tq = "\"\"\""
       check.session(
