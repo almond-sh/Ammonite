@@ -4,7 +4,7 @@ import java.util.function.{Function => JFunction}
 
 import ammonite.compiler.iface.{Compiler => _, Parser => _, Preprocessor => IPreprocessor, _}
 import ammonite.compiler.internal.CompilerInternals
-import ammonite.util.{Imports, Name, Res}
+import ammonite.util.{ImportHookPlaceholder, Imports, Name, Res}
 import ammonite.util.Util.CodeSource
 import pprint.Util
 
@@ -342,18 +342,27 @@ class Preprocessor(
   private val Import = Processor {
     case (name, code, tree: untpd.Import) =>
       val Array(keyword, body) = code.split(" ", 2)
-      val tq = "\"\"\""
-      Expanded(code, Seq(
-        s"""
+      // Nothing is printed for the placeholders of import hooks (see ImportHookPlaceholder)
+      Expanded(code, ImportHookPlaceholder.strip(body.trim).toSeq.flatMap(importPrinters))
+  }
+
+  /**
+   * The code printing an import, from the text of what it imports (like `a.b, c.d` for
+   * `import a.b, c.d`)
+   *
+   * Override it to print imports differently, or not at all.
+   */
+  protected def importPrinters(imported: String): Seq[String] =
+    Seq(
+      s"""
         _root_.ammonite
               .repl
               .ReplBridge
               .value
               .Internal
-              .printImport(${Util.literalize(body.trim)})
+              .printImport(${Util.literalize(imported)})
         """
-      ))
-  }
+    )
 
   private val Export = Processor {
     case (name, code, tree: untpd.Export) =>

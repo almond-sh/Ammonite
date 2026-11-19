@@ -282,10 +282,8 @@ object ProjectTests extends TestSuite {
       if (scala2_12) check.session(
         """
         @ import $ivy.`com.thoughtworks.deeplearning::plugins-builtins:2.0.0-RC0`
-        import $ivy.$
 
         @ import $ivy.`org.nd4j:nd4j-native-platform:0.8.0`
-        import $ivy.$
 
         @ import scala.concurrent.ExecutionContext.Implicits.global
         import scala.concurrent.ExecutionContext.Implicits.global
@@ -310,7 +308,6 @@ object ProjectTests extends TestSuite {
         @ )
 
         @ import $ivy.`com.github.vidstige:jadb:v1.0.1`
-        import $ivy.$
 
         @ import se.vidstige.jadb.JadbConnection
         import se.vidstige.jadb.JadbConnection
@@ -336,7 +333,6 @@ object ProjectTests extends TestSuite {
         @ // should only add the shapeless-specific JARs
 
         @ import $ivy.`com.chuusai::shapeless:2.3.3 compat`
-        import $ivy.$
 
         @ val addedAfterShapeless = scalaLibJarCount() - initCount
         addedAfterShapeless: Int = 0
@@ -344,7 +340,6 @@ object ProjectTests extends TestSuite {
         @ // shouldn't add any JAR (scala-library already pulled by Ammonite)
 
         @ import $ivy.`org.scala-lang:scala-library:2.11.12`
-        import $ivy.$
 
         @ val addedAfterScalaLib = scalaLibJarCount() - initCount
         addedAfterScalaLib: Int = 0

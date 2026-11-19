@@ -4,7 +4,7 @@ import java.util.Map
 
 import ammonite.compiler.internal.CompilerInternals
 import ammonite.compiler.iface.{Compiler => _, Parser => IParser, _}
-import ammonite.util.ImportTree
+import ammonite.util.{ImportHookPlaceholder, ImportTree}
 import ammonite.util.Util.CodeSource
 
 import dotty.tools.dotc
@@ -232,7 +232,8 @@ class Parsers extends IParser {
               val to = sel.rename.decode.toString
               from -> Some(to).filter(_ != from)
             }
-            val updatedImport = updatedStatement.substring(start, end).takeWhile(_ != '.') + ".$"
+            val updatedImport =
+              ImportHookPlaceholder(updatedStatement.substring(start, end).takeWhile(_ != '.'))
             updatedStatement = updatedStatement.patch(
               start,
               updatedImport + (" ") * (end - start - updatedImport.length),

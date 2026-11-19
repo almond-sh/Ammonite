@@ -583,7 +583,10 @@ class Interpreter(
             (processed, indexedWrapperName) =>
               evaluateLine(processed, fileName, indexedWrapperName, false, incrementLine),
             autoImport = true,
-            ""
+            "",
+            // The path of that code source is a made-up "(console)" file in the working
+            // directory, that means nothing to users, unlike the path of actual scripts
+            printCompilingMessages = false
           )
         } yield {
           metadata.blockInfo.last.finalImports
@@ -600,7 +603,8 @@ class Interpreter(
       codeSource: CodeSource,
       evaluate: (Preprocessor.Output, Name) => Res[(Evaluated, Tag)],
       autoImport: Boolean,
-      extraCode: String
+      extraCode: String,
+      printCompilingMessages: Boolean = true
   ): Res[ScriptOutput.Metadata] = synchronized {
 
     // we store the old value, because we will reassign this in the loop
@@ -658,8 +662,10 @@ class Interpreter(
         val indexedWrapperName = Interpreter.indexWrapperName(codeSource.wrapperName, wrapperIndex)
 
         def compileRunBlock(leadingSpaces: String, hookInfo: ImportHookInfo) = {
-          val printSuffix = if (wrapperIndex == 1) "" else " #" + wrapperIndex
-          printer.info("Compiling " + codeSource.printablePath + printSuffix)
+          if (printCompilingMessages) {
+            val printSuffix = if (wrapperIndex == 1) "" else " #" + wrapperIndex
+            printer.info("Compiling " + codeSource.printablePath + printSuffix)
+          }
           for {
             processed <- compilerManager.preprocess(codeSource.fileName).transform(
               hookInfo.stmts,
