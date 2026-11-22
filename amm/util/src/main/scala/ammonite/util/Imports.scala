@@ -131,8 +131,8 @@ class Imports private (val value: Seq[ImportData]) {
     // Stringify everything
     val out = for (group <- grouped) yield {
       val printedGroup = for (item <- group) yield {
-        if (item.fromName == item.toName) item.fromName.backticked
-        else s"${item.fromName.backticked} => ${item.toName.backticked}"
+        if (item.fromName == item.toName) Imports.selector(item.fromName)
+        else s"${Imports.selector(item.fromName)} => ${Imports.selector(item.toName)}"
       }
       val pkgString = Util.encodeScalaSourcePath(group.head.prefix)
       "import " + pkgString + s".{$newLine  " +
@@ -143,6 +143,23 @@ class Imports private (val value: Seq[ImportData]) {
 }
 
 object Imports {
+
+  /**
+   * A name, as written in an import selector
+   *
+   * On top of what [[Name.backticked]] does, this wraps in backticks `*`, which
+   * would be a wildcard in Scala 3 (or Scala 2 with `-Xsource:3`), and operators
+   * starting with `<!` or `<?`, that would be read as the start of an XML literal
+   * here (they follow `{` or whitespace).
+   */
+  private def selector(name: Name): String = {
+    val raw = name.raw
+    def startsXmlLiteral =
+      raw.length >= 2 && raw(0) == '<' && (raw(1) == '!' || raw(1) == '?')
+    if (raw == "*" || startsXmlLiteral) s"`$raw`"
+    else name.backticked
+  }
+
   // This isn't called directly, but we need to define it so uPickle can know
   // how to read/write imports
   def unapply(s: Imports): Option[Seq[ImportData]] = Some(s.value)
