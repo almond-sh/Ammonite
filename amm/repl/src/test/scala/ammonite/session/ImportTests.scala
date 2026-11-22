@@ -369,6 +369,21 @@ object ImportTests extends TestSuite {
         res3: Int = 1
       """)
     }
+    test("symbolicNames") {
+      // Names that need backticks in the import selectors generated for later cells:
+      // `*` is the wildcard in Scala 3, `<!` and `<?` start XML literals after `{` or whitespace
+      check.session("""
+        @ object ops { def `<!`(n: Int) = n + 1; def `<?`(n: Int) = n + 2; def *(n: Int) = n + 3; val Shape0 = 4 }
+
+        @ import ops._
+
+        @ 2
+        res2: Int = 2
+
+        @ `<!`(1) + `<?`(1) + *(1) + Shape0
+        res3: Int = 13
+      """)
+    }
     test("shapelessBugMinimized") {
       check.session("""
         @ object f{ case class Foo()}
