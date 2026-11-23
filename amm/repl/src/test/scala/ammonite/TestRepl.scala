@@ -37,6 +37,8 @@ class TestRepl(
   def wrapperNamePrefix = Option.empty[String]
   def pkgName = Option.empty[Seq[Name]]
   def warnings = true
+  def directiveHooks: Map[String, ammonite.runtime.DirectiveHook] =
+    ammonite.runtime.DirectiveHook.defaults
 
   val tempDir = os.Path(
     java.nio.file.Files.createTempDirectory("ammonite-tester")
@@ -88,6 +90,7 @@ class TestRepl(
     initialClassLoader = initialClassLoader,
     alreadyLoadedDependencies = Defaults.alreadyLoadedDependencies("amm-test-dependencies.txt"),
     importHooks = ImportHook.defaults,
+    directiveHooks = directiveHooks,
     classPathWhitelist = ammonite.repl.Repl.getClassPathWhitelist(thin = true),
     wrapperNamePrefix = wrapperNamePrefix.getOrElse(Interpreter.Parameters().wrapperNamePrefix),
     warnings = warnings,

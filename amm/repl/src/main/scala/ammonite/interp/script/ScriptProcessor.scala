@@ -4,8 +4,9 @@ import java.io.File
 
 import ammonite.compiler.iface.{CodeWrapper, Parser}
 import ammonite.interp.{DependencyLoader, Interpreter}
-import ammonite.runtime.{Frame, ImportHook, Storage}
-import ammonite.util.{ImportTree, Name, PositionOffsetConversion, Util}
+import ammonite.directives.{DiagnosticSeverity, UsingDirectivesParser}
+import ammonite.runtime.{DirectiveHook, Frame, ImportHook, Storage}
+import ammonite.util.{ImportTree, Name, Position, PositionOffsetConversion, Util}
 import ammonite.util.Util.CodeSource
 import coursierapi.{Dependency, Repository}
 
@@ -19,7 +20,8 @@ final case class ScriptProcessor(
     defaultRepositories: Seq[Repository],
     extraPluginDependencies: Seq[Dependency] = Nil,
     wd: os.Path = os.pwd,
-    importHooks: Map[Seq[String], ImportHook] = ImportHook.defaults
+    importHooks: Map[Seq[String], ImportHook] = ImportHook.defaults,
+    directiveHooks: Map[String, DirectiveHook] = DirectiveHook.defaults
 ) { self =>
 
   import ScriptProcessor._
@@ -102,7 +104,47 @@ final case class ScriptProcessor(
       Script.Block(startIdx, leadingSpaces, statements0, importResults)
     }
 
-    Script(code, codeSource, blocks, diagnostics.toVector)
+    val directiveResults =
+      if (directiveHooks.isEmpty || !rawCode.contains("//>")) Nil
+      else {
+        val parsed = UsingDirectivesParser.parse(rawCode)
+        def pos(p: ammonite.directives.Position) = Position(p.line, p.column)
+        for (diag <- parsed.diagnostics) {
+          val severity = diag.severity match {
+            case DiagnosticSeverity.Error => "ERROR"
+            case DiagnosticSeverity.Warning => "WARNING"
+          }
+          diagnostics += Diagnostic(severity, pos(diag.position), pos(diag.position), diag.message)
+        }
+        parsed.directives.flatMap { directive =>
+          val start = pos(directive.keyPosition)
+          val end = start.copy(char = start.char + directive.key.length)
+          directiveHooks.get(directive.key) match {
+            case None =>
+              diagnostics += Diagnostic(
+                "WARNING",
+                start,
+                end,
+                s"Unrecognized directive '//> using ${directive.key}'"
+              )
+              Nil
+            case Some(hook) =>
+              hook.handle(
+                codeSource,
+                directive,
+                dummyInterpreterInterface,
+                codeWrapper.wrapperPath
+              ) match {
+                case Left(err) =>
+                  diagnostics += Diagnostic("ERROR", start, end, err)
+                  Nil
+                case Right(res) => res
+              }
+          }
+        }
+      }
+
+    Script(code, codeSource, blocks, diagnostics.toVector, directiveResults)
   }
 
   def load(path: os.Path, codeSource: CodeSource): Script = {
