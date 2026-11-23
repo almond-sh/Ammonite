@@ -9,7 +9,9 @@ final case class Script(
     code: String,
     codeSource: CodeSource,
     blocks: Seq[Script.Block],
-    processorDiagnostics: Seq[Diagnostic]
+    processorDiagnostics: Seq[Diagnostic],
+    // what the using directives at the beginning of the script (`//> using …`) amount to
+    directiveResults: Seq[ImportHook.Result] = Nil
 ) {
 
   lazy val dependencyImports: Imports = {
@@ -18,14 +20,17 @@ final case class Script(
   }
 
   lazy val dependencies: Script.Dependencies =
-    blocks
-      .flatMap(_.imports)
+    (directiveResults ++ blocks.flatMap(_.imports))
       .map(Script.dependencies)
       .foldLeft(Script.Dependencies())(_ + _)
       .noDuplicates
 
   lazy val options: Script.Options =
-    Script.Options() // TODO Add $imports for that
+    Script.Options(
+      extraScalacOptions = directiveResults.collect {
+        case ImportHook.Result.ScalacOptions(options) => options
+      }.flatten
+    )
 
   def segments(wd: Option[os.Path]): Option[Seq[String]] =
     for {
@@ -127,6 +132,8 @@ object Script {
         }
       case ImportHook.Result.Repo(r) =>
         Dependencies(extraRepositories = Seq(r))
+      case _: ImportHook.Result.ScalacOptions =>
+        Dependencies()
     }
 
 }

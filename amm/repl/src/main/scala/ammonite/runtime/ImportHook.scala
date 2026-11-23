@@ -77,6 +77,9 @@ object ImportHook {
         plugin: Boolean
     ) extends Result
     case class Repo(repo: coursierapi.Repository) extends Result
+
+    /** Options to pass to the compiler, for the code that follows (from `//> using option`) */
+    case class ScalacOptions(options: Seq[String]) extends Result
   }
 
   object File extends SourceHook(false)
@@ -137,40 +140,65 @@ object ImportHook {
             Left("Cannot resolve $file import: " + missing.map(s => s"$s.sc").mkString(", "))
           } else {
             Right(
-              for (((relativeModule, rename), filePath) <- relativeModules.zip(files)) yield {
-
-                val (flexiblePkg, wrapper) = Util.pathToPackageWrapper(
-                  source.flexiblePkgName,
-                  (filePath relativeTo currentScriptPath / os.up).toNIO
+              for (((relativeModule, rename), filePath) <- relativeModules.zip(files))
+                yield SourceHook.result(
+                  source,
+                  currentScriptPath,
+                  filePath,
+                  rename.getOrElse(relativeModule.last),
+                  exec,
+                  wrapperPath
                 )
-
-                val fullPrefix = source.pkgRoot ++ flexiblePkg ++ Seq(wrapper) ++ wrapperPath
-
-                val importData = Seq(ImportData(
-                  fullPrefix.last,
-                  Name(rename.getOrElse(relativeModule.last)),
-                  fullPrefix.dropRight(1),
-                  ImportData.TermType
-                ))
-
-                val codeSrc = CodeSource(
-                  wrapper,
-                  flexiblePkg,
-                  source.pkgRoot,
-                  Some(filePath.toNIO)
-                )
-
-                Result.Source(
-                  Util.normalizeNewlines(os.read(filePath)),
-                  codeSrc,
-                  Imports(importData),
-                  exec
-                )
-              }
             )
           }
       }
 
+    }
+  }
+
+  object SourceHook {
+
+    /**
+     * The script at `filePath`, to be loaded from `source`, and brought in scope as `name`
+     *
+     * @param currentScriptPath path of `source`, that `filePath` is relative to
+     */
+    def result(
+        source: CodeSource,
+        currentScriptPath: os.Path,
+        filePath: os.Path,
+        name: String,
+        exec: Boolean,
+        wrapperPath: Seq[Name]
+    ): Result.Source = {
+
+      val (flexiblePkg, wrapper) = Util.pathToPackageWrapper(
+        source.flexiblePkgName,
+        (filePath relativeTo currentScriptPath / os.up).toNIO
+      )
+
+      val fullPrefix = source.pkgRoot ++ flexiblePkg ++ Seq(wrapper) ++ wrapperPath
+
+      val importData = Seq(ImportData(
+        fullPrefix.last,
+        Name(name),
+        fullPrefix.dropRight(1),
+        ImportData.TermType
+      ))
+
+      val codeSrc = CodeSource(
+        wrapper,
+        flexiblePkg,
+        source.pkgRoot,
+        Some(filePath.toNIO)
+      )
+
+      Result.Source(
+        Util.normalizeNewlines(os.read(filePath)),
+        codeSrc,
+        Imports(importData),
+        exec
+      )
     }
   }
 
@@ -188,6 +216,17 @@ object ImportHook {
     def resolve(
         interp: InterpreterInterface,
         signatures: Seq[String]
+    ): Either[String, (Seq[Dependency], Seq[JFile])] =
+      resolve(interp, signatures, "$ivy imports")
+
+    /**
+     * @param what what the dependencies come from, for error messages
+     *             (like "$ivy imports")
+     */
+    def resolve(
+        interp: InterpreterInterface,
+        signatures: Seq[String],
+        what: String
     ): Either[String, (Seq[Dependency], Seq[JFile])] = {
       val splitted = for (signature <- signatures) yield {
         val (dottyCompat, coords) =
@@ -217,7 +256,7 @@ object ImportHook {
       val errors = splitted.collect { case Left(error) => error }
       val successes = splitted.collect { case Right(v) => v }
       if (errors.nonEmpty)
-        Left("Invalid $ivy imports: " + errors.map(Util.newLine + "  " + _).mkString)
+        Left(s"Invalid $what: " + errors.map(Util.newLine + "  " + _).mkString)
       else
         interp.loadIvy(successes: _*).map((successes, _))
     }

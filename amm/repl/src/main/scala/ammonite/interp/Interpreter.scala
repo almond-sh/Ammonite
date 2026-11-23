@@ -21,6 +21,14 @@ import ammonite.runtime.tools.IvyThing
 import ammonite.util.Util._
 import ammonite.util.{Frame => _, _}
 import coursierapi.{Dependency, Fetch, Repository}
+import ammonite.directives.{
+  DiagnosticSeverity,
+  DirectiveCompletion,
+  Position => DirectivePosition,
+  UsingDirective,
+  UsingDirectiveDiagnostic,
+  UsingDirectivesParser
+}
 
 /**
  * A convenient bundle of all the functionality necessary
@@ -255,7 +263,14 @@ class Interpreter(
           wrapperPath
         )
       )
-      hookResults <- Res.map(hooked) {
+      hookResults <- handleHookResults(hooked)
+    } yield hookResults
+  }
+
+  /** Acts on what import or directive hooks returned: loads scripts, updates the class path… */
+  private def handleHookResults(hooked: Seq[ImportHook.Result]): Res[Seq[Imports]] =
+    synchronized {
+      Res.map(hooked) {
         case res: ImportHook.Result.Source =>
           for {
             processed <- processModule(
@@ -285,9 +300,116 @@ class Interpreter(
           addRepository(repo)
           Res.Success(Imports())
 
+        case ImportHook.Result.ScalacOptions(options) =>
+          addScalacOptions(options)
+          Res.Success(Imports())
       }
-    } yield hookResults
+    }
+
+  /**
+   * Position of something in `source`, as users would like to see it in messages (with a
+   * path relative to the working directory, if `source` is in it)
+   */
+  private def directivePosition(source: CodeSource, position: DirectivePosition): String = {
+    val path = source.path.map(os.Path(_)) match {
+      case Some(p) if p.startsWith(wd) => p.relativeTo(wd).toString
+      case _ => source.printablePath
+    }
+    s"$path:${position.line + 1}:${position.column + 1}"
   }
+
+  /**
+   * Runs the hook of a using directive
+   *
+   * @return the imports the directive brings in scope (like the wrapper object of the
+   *         scripts of `//> using script`)
+   */
+  def resolveUsingDirective(
+      source: CodeSource,
+      directive: UsingDirective,
+      wrapperPath: Seq[Name],
+      hooks: Map[String, DirectiveHook] = directiveHooks
+  ): Res[Imports] = synchronized {
+    hooks.get(directive.key) match {
+      case None =>
+        printer.warning(
+          s"${directivePosition(source, directive.keyPosition)}: " +
+            s"ignoring unrecognized directive '//> using ${directive.key}'"
+        )
+        Res.Success(Imports())
+      case Some(hook) =>
+        for {
+          hooked <- Res(
+            hook.handle(source, directive, this, wrapperPath).left.map { err =>
+              s"${directivePosition(source, directive.keyPosition)}: $err"
+            }
+          )
+          imports <- handleHookResults(hooked)
+        } yield imports.foldLeft(Imports())(_ ++ _)
+    }
+  }
+
+  /**
+   * Parses the using directives at the beginning of `code` (`//> using …`), and runs their
+   * hooks
+   *
+   * Does nothing if there are no directive hooks (see [[Interpreter.Parameters.directiveHooks]]).
+   *
+   * @return the imports the directives bring in scope
+   */
+  def resolveUsingDirectives(
+      code: String,
+      source: CodeSource,
+      wrapperPath: Seq[Name]
+  ): Res[Imports] = synchronized {
+    if (directiveHooks.isEmpty || !code.contains("//>")) Res.Success(Imports())
+    else {
+      val parsed = UsingDirectivesParser.parse(code)
+      val (errors, warnings) = parsed.diagnostics.partition(_.severity == DiagnosticSeverity.Error)
+      def message(diag: UsingDirectiveDiagnostic) =
+        s"${directivePosition(source, diag.position)}: ${diag.message}"
+      for (warning <- warnings)
+        printer.warning(message(warning))
+      if (errors.nonEmpty)
+        Res.Failure(errors.map(message).mkString(newLine))
+      else
+        Res.fold(Imports(), parsed.directives) { (acc, directive) =>
+          resolveUsingDirective(source, directive, wrapperPath).map(acc ++ _)
+        }
+    }
+  }
+
+  /**
+   * Completes the key or value of a using directive (like `//> using dep org.type`), if the
+   * cursor is in one
+   *
+   * @param hooks the directive hooks whose keys and values are completed (the ones of this
+   *              interpreter by default)
+   * @return the index in `code` the completions start from, and the completions, or
+   *         `None` if `pos` isn't in a directive (so that code completion applies there)
+   */
+  def completeUsingDirective(
+      code: String,
+      pos: Int,
+      hooks: Map[String, DirectiveHook] = directiveHooks
+  ): Option[(Int, Seq[String])] =
+    if (hooks.isEmpty) None
+    else
+      DirectiveCompletion.find(code, pos).map {
+        case DirectiveCompletion.Key(start, prefix) =>
+          (start, hooks.keys.filter(_.startsWith(prefix)).toVector.sorted)
+        case DirectiveCompletion.Value(key, start, prefix) =>
+          hooks.get(key) match {
+            case None => (pos, Nil)
+            case Some(hook) =>
+              val (from, completions) =
+                try hook.complete(this, wd, prefix)
+                catch { case scala.util.control.NonFatal(_) => (0, Nil) }
+              // like the module names or versions of dependencies, the names of the
+              // scripts in a directory…
+              (start + from, completions)
+          }
+      }
 
   def resolveImportHooks(
       importTrees: Seq[ImportTree],
@@ -324,14 +446,16 @@ class Interpreter(
 
     for {
       _ <- Catching { case ex => Res.Exception(ex, "") }
-      ImportHookInfo(hookImports, hookStmts, _) <- resolveImportHooks(
+      directiveImports <- resolveUsingDirectives(code, codeSource, replCodeWrapper.wrapperPath)
+      ImportHookInfo(hookImports0, hookStmts, _) <- resolveImportHooks(
         importTrees,
         hookStmts,
         codeSource,
         replCodeWrapper.wrapperPath
       )
+      hookImports = directiveImports ++ hookImports0
 
-      processed <- compilerManager.preprocess("(console)").transform(
+      processedOpt <- compilerManager.preprocess("(console)").transform(
         hookStmts,
         currentLine.toString,
         "",
@@ -343,14 +467,23 @@ class Interpreter(
         skipEmpty = true,
         markScript = false,
         codeWrapper = replCodeWrapper
-      )
-      (out, tag) <- evaluateLine(
-        processed,
-        wrapperName.encoded + ".sc",
-        wrapperName,
-        silent,
-        incrementLine
-      )
+      ) match {
+        // nothing to compile, but directives that bring things in scope (like the
+        // wrapper objects of the scripts of '//> using script')
+        case Res.Skip if directiveImports.value.nonEmpty => Res.Success(None)
+        case other => other.map(Some(_))
+      }
+      out <- processedOpt match {
+        case None => Res.Success(Evaluated(Nil, Imports()))
+        case Some(processed) =>
+          evaluateLine(
+            processed,
+            wrapperName.encoded + ".sc",
+            wrapperName,
+            silent,
+            incrementLine
+          ).map(_._1)
+      }
     } yield out.copy(imports = out.imports ++ hookImports)
   }
 
@@ -524,6 +657,13 @@ class Interpreter(
         )
 
         for {
+          // run every time, even when the script is cached, so that its dependencies
+          // are loaded, and its scripts are run
+          directiveImports <- resolveUsingDirectives(
+            code,
+            codeSource,
+            scriptCodeWrapper.wrapperPath
+          )
           blocks <- cachedScriptData match {
             case None => Res(splittedScript).map(_.map(_ => None))
             case Some(scriptOutput) =>
@@ -539,7 +679,7 @@ class Interpreter(
           metadata <- processAllScriptBlocks(
             blocks,
             Res(splittedScript),
-            predefImports,
+            predefImports ++ directiveImports,
             codeSource,
             processSingleBlock(_, codeSource, _),
             autoImport,
@@ -567,19 +707,25 @@ class Interpreter(
       else {
         val wrapperName = Name(wrapperNamePrefix + currentLine)
         val fileName = wrapperName.encoded + ".sc"
+        val codeSource = CodeSource(
+          wrapperName,
+          Seq(),
+          parameters.pkgName,
+          Some((wd / "(console)").toNIO)
+        )
         for {
+          directiveImports <- resolveUsingDirectives(
+            finalCode,
+            codeSource,
+            replCodeWrapper.wrapperPath
+          )
           blocks <- Res(parser().splitScript(finalCode, fileName))
 
           metadata <- processAllScriptBlocks(
             blocks.map(_ => None),
             Res.Success(blocks),
-            predefImports ++ frameImports,
-            CodeSource(
-              wrapperName,
-              Seq(),
-              parameters.pkgName,
-              Some((wd / "(console)").toNIO)
-            ),
+            predefImports ++ frameImports ++ directiveImports,
+            codeSource,
             (processed, indexedWrapperName) =>
               evaluateLine(processed, fileName, indexedWrapperName, false, incrementLine),
             autoImport = true,
@@ -589,7 +735,7 @@ class Interpreter(
             printCompilingMessages = false
           )
         } yield {
-          metadata.blockInfo.last.finalImports
+          directiveImports ++ metadata.blockInfo.last.finalImports
         }
       }
     }
@@ -884,6 +1030,10 @@ object Interpreter {
    * @param frameOutputs
    *   If non-empty, the sources and byte code of the code compiled in each frame get written
    *   there
+   * @param directiveHooks
+   *   Hooks handling the using directives (`//> using …`) of commands and scripts, by
+   *   directive key. If empty, directives are left alone (they're just comments for the
+   *   compiler).
    */
   case class Parameters(
       printer: Printer = Printer(
@@ -900,6 +1050,7 @@ object Interpreter {
       verboseOutput: Boolean = true,
       initialClassLoader: ClassLoader = null,
       importHooks: Map[Seq[String], ImportHook] = ImportHook.defaults,
+      directiveHooks: Map[String, DirectiveHook] = DirectiveHook.defaults,
       alreadyLoadedDependencies: Seq[Dependency] = Nil,
       classPathWhitelist: Set[Seq[String]] = Set.empty,
       wrapperNamePrefix: String = "cmd",

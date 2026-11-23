@@ -243,7 +243,12 @@ class Repl(
       output,
       colors().prompt()(prompt()).render,
       colors(),
-      interp.compilerManager.complete(_, importsForCompletion.toString, _),
+      (pos, code) =>
+        // the compiler only sees directives as comments, so we complete them ourselves
+        interp.completeUsingDirective(code, pos) match {
+          case Some((from, completions)) => (from, completions, Nil)
+          case None => interp.compilerManager.complete(pos, importsForCompletion.toString, code)
+        },
       storage.fullHistory(),
       addHistory = (code) =>
         if (code != "") {

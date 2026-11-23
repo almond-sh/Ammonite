@@ -16,6 +16,29 @@ import ammonite.repl.api.FrontEnd
 import org.jline.reader.impl.DefaultParser
 
 object FrontEnds {
+
+  /** Whether the cursor is on a using directive line (`//> using …`) */
+  def inDirective(code: String, cursor: Int): Boolean = {
+    val lineStart = code.lastIndexOf('\n', cursor - 1) + 1
+    code.substring(lineStart, cursor).trim.startsWith("//>")
+  }
+
+  /**
+   * The JLine candidate for a completion of a using directive
+   *
+   * JLine replaces the whole word under the cursor with candidates, while completions
+   * replace what follows `completionBase` (the beginning of a directive key or value).
+   */
+  def directiveCandidate(
+      code: String,
+      wordStart: Int,
+      completionBase: Int,
+      completion: String
+  ): String =
+    if (wordStart <= completionBase && completionBase <= code.length)
+      code.substring(wordStart, completionBase) + completion
+    else
+      completion
   class JLineUnix(codeParser: IParser) extends JLineTerm(codeParser)
   class JLineWindows(codeParser: IParser) extends JLineTerm(codeParser)
   class JLineTerm(codeParser: IParser) extends FrontEnd {
@@ -115,10 +138,23 @@ class AmmCompleter(highlighter: Highlighter) extends Completer {
       reader.getTerminal.flush()
     }
     // add suggestions
-    completions.sorted.foreach { c =>
-      val candidate = makeCandidate(line.word, line.wordCursor, c)
-      candidates.add(new Candidate(candidate, c, null, null, null, null, false))
-    }
+    if (FrontEnds.inDirective(line.line(), line.cursor()))
+      // directive completions replace what follows completionBase (in a key or value), and
+      // are already sorted (versions, highest first)
+      for (c <- completions) {
+        val candidate = FrontEnds.directiveCandidate(
+          line.line(),
+          line.cursor() - line.wordCursor(),
+          completionBase,
+          c
+        )
+        candidates.add(new Candidate(candidate, c, null, null, null, null, false))
+      }
+    else
+      completions.sorted.foreach { c =>
+        val candidate = makeCandidate(line.word, line.wordCursor, c)
+        candidates.add(new Candidate(candidate, c, null, null, null, null, false))
+      }
   }
 
   /** Makes a full-word candidate based on autocomplete candidate */

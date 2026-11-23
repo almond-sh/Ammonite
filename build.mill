@@ -482,7 +482,7 @@ object Deps {
   val scalaCliBsp = mvn"org.virtuslab.scala-cli:scala-cli-bsp:1.18.0"
   val cask = mvn"com.lihaoyi::cask:0.10.2"
   val classPathUtil = mvn"io.get-coursier::class-path-util:0.1.4"
-  val coursierInterface = mvn"io.get-coursier:interface:1.0.28"
+  val coursierInterface = mvn"io.get-coursier:interface:1.0.31"
   val coursierDependencyInterface = mvn"io.get-coursier::dependency-interface:0.3.4"
   def coursierVersions(scalaVersion: String) = mvn"io.get-coursier::versions:0.7.0".withDottyCompat(scalaVersion)
   val fansi = mvn"com.lihaoyi::fansi:0.5.1"
@@ -801,6 +801,28 @@ object amm extends Cross[MainModule](binCrossScalaVersions)
   }
 
   /**
+   * The parser of using directives (`//> using dep …`, `//> using script …`, …), the ones
+   * Scala CLI reads from its sources, and that Ammonite reads from scripts and commands.
+   *
+   * A port of the `scala3-directives-parser` module of the Scala 3 compiler, that is only
+   * published for recent Scala 3 versions. Depends on nothing but the Scala standard library,
+   * so that tools that don't depend on the rest of Ammonite (like the almond launcher) can
+   * parse directives the same way.
+   */
+  object directives extends Cross[DirectivesModule](binCrossScalaVersions)
+      with ShortCrossNames[DirectivesModule]
+  trait DirectivesModule extends AmmModule {
+    def moduleDeps: Seq[PublishModule] = Seq()
+    // for tools still running on Java 8 (like the almond launcher), unlike the rest of Ammonite
+    def scalacOptions: T[Seq[String]] = Task {
+      super.scalacOptions().filter(_ != "-release").filter(_ != releaseVersion()) ++
+        Seq("-release", "8")
+    }
+    // its tests are written in Scala 3 (and only compiled for it, from src/test/scala-3)
+    object test extends CrossSbtTests with TestModule.Junit4
+  }
+
+  /**
    * The Scala compiler bits of Ammonite: preprocessing, compiling, completing.
    *
    * Published once per binary Scala version, like every other module. What has to follow the
@@ -973,6 +995,7 @@ object amm extends Cross[MainModule](binCrossScalaVersions)
   trait ReplModule extends AmmModule {
     def moduleDeps: Seq[PublishModule] = Seq(
       amm.util(),
+      amm.directives(),
       amm.repl.api(),
       terminal()
     )
