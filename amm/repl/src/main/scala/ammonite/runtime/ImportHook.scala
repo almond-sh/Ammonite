@@ -246,8 +246,7 @@ object ImportHook {
                 // For Scala 3.8.0 and later versions, scala.util.Properties.versionNumberString
                 // isn't the 2.13.x compatible Scala version any more
                 "2.13.6"
-            }
-            else
+            } else
               interp.scalaVersion
           val params = ScalaParameters(scalaVersion)
           dep.applyParams(params).toCs

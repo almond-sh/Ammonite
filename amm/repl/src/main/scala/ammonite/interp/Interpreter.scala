@@ -554,8 +554,8 @@ class Interpreter(
     }
 
   def processRawSource(
-    code: String,
-    fileName: String
+      code: String,
+      fileName: String
   ): Res[Seq[(String, Array[Byte])]] = synchronized {
     for {
       _ <- Catching { case e: ThreadDeath => Evaluator.interrupted(e) }
