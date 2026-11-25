@@ -134,6 +134,8 @@ object Script {
         Dependencies(extraRepositories = Seq(r))
       case _: ImportHook.Result.ScalacOptions =>
         Dependencies()
+      case _: ImportHook.Result.Warning =>
+        Dependencies()
     }
 
 }

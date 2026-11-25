@@ -80,6 +80,13 @@ object ImportHook {
 
     /** Options to pass to the compiler, for the code that follows (from `//> using option`) */
     case class ScalacOptions(options: Seq[String]) extends Result
+
+    /**
+     * A warning to report to users (like about compiler options that are ignored)
+     *
+     * Warnings of directive hooks get prefixed with the position of their directive.
+     */
+    case class Warning(message: String) extends Result
   }
 
   object File extends SourceHook(false)

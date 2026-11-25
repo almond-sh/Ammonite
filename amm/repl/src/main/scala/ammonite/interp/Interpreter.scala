@@ -303,6 +303,10 @@ class Interpreter(
         case ImportHook.Result.ScalacOptions(options) =>
           addScalacOptions(options)
           Res.Success(Imports())
+
+        case ImportHook.Result.Warning(message) =>
+          printer.warning(message)
+          Res.Success(Imports())
       }
     }
 
@@ -342,9 +346,15 @@ class Interpreter(
       case Some(hook) =>
         for {
           hooked <- Res(
-            hook.handle(source, directive, this, wrapperPath).left.map { err =>
-              s"${directivePosition(source, directive.keyPosition)}: $err"
-            }
+            hook.handle(source, directive, this, wrapperPath)
+              .left.map(err => s"${directivePosition(source, directive.keyPosition)}: $err")
+              .map(_.map {
+                case ImportHook.Result.Warning(message) =>
+                  ImportHook.Result.Warning(
+                    s"${directivePosition(source, directive.keyPosition)}: $message"
+                  )
+                case other => other
+              })
           )
           imports <- handleHookResults(hooked)
         } yield imports.foldLeft(Imports())(_ ++ _)

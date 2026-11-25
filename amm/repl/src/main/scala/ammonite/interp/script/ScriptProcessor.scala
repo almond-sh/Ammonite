@@ -138,7 +138,11 @@ final case class ScriptProcessor(
                 case Left(err) =>
                   diagnostics += Diagnostic("ERROR", start, end, err)
                   Nil
-                case Right(res) => res
+                case Right(res) =>
+                  val (warnings, others) = res.partition(_.isInstanceOf[ImportHook.Result.Warning])
+                  for (ImportHook.Result.Warning(message) <- warnings)
+                    diagnostics += Diagnostic("WARNING", start, end, message)
+                  others
               }
           }
         }
