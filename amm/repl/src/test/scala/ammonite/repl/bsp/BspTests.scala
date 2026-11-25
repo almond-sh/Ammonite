@@ -125,6 +125,8 @@ object BspTests extends TestSuite {
       val initialTargets = targets()
       assert(initialTargets.map(_.getId) == List(frame0))
       assert(initialTargets.head.getDependencies.isEmpty)
+      // the REPL compiles code itself, as it gets evaluated
+      assert(!initialTargets.head.getCapabilities.getCanCompile)
       val scalaTarget = initialTargets.head.getData match {
         case t: ScalaBuildTarget => t
         case other =>
