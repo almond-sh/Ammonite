@@ -61,6 +61,16 @@ object ImportHook {
     def loadIvy(coordinates: Dependency*): Either[String, Seq[JFile]]
     def watch(p: os.Path): Unit
     def scalaVersion: String
+
+    /**
+     * Checks compiler options, before they're passed along
+     *
+     * @return the errors of the options if some are invalid, or the options to pass to the
+     *         compiler along with warnings about the options
+     *         (see [[ammonite.compiler.iface.CompilerLifecycleManager.checkScalacOptions]])
+     */
+    def checkScalacOptions(options: Seq[String]): Either[String, (Seq[String], Seq[String])] =
+      Right((options, Nil))
   }
 
   /**
@@ -80,6 +90,13 @@ object ImportHook {
 
     /** Options to pass to the compiler, for the code that follows (from `//> using option`) */
     case class ScalacOptions(options: Seq[String]) extends Result
+
+    /**
+     * A warning to report to users (like about compiler options that are ignored)
+     *
+     * Warnings of directive hooks get prefixed with the position of their directive.
+     */
+    case class Warning(message: String) extends Result
   }
 
   object File extends SourceHook(false)
@@ -246,8 +263,7 @@ object ImportHook {
                 // For Scala 3.8.0 and later versions, scala.util.Properties.versionNumberString
                 // isn't the 2.13.x compatible Scala version any more
                 "2.13.6"
-            }
-            else
+            } else
               interp.scalaVersion
           val params = ScalaParameters(scalaVersion)
           dep.applyParams(params).toCs

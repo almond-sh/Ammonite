@@ -174,6 +174,21 @@ class CompilerLifecycleManager(
       preConfiguredSettingsChanged = true
     }
 
+  override def checkScalacOptions(
+      options: Seq[String]
+  ): Either[String, (Seq[String], Seq[String])] =
+    if (options.isEmpty) Right((Nil, Nil))
+    else {
+      val errors = mutable.ListBuffer.empty[String]
+      val (success, _) = new Settings(errors += _).processArguments(options.toList, true)
+      if (success && errors.isEmpty) Right((options, Nil))
+      else
+        Left(
+          if (errors.isEmpty) s"Invalid compiler options: ${options.mkString(" ")}"
+          else errors.mkString(newLine)
+        )
+    }
+
   def addScalacOptions(options: Seq[String]): Unit =
     synchronized {
       addedSettings ++= options

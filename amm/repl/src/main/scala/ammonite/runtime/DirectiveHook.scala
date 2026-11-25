@@ -42,6 +42,25 @@ trait DirectiveHook {
 
 object DirectiveHook {
 
+  /**
+   * Finds the hook of a directive key, among hooks registered by key
+   *
+   * Besides exact keys, hooks can be registered for a key prefix, like `spark.*`: these handle
+   * the directives whose key starts with that prefix and a dot (like `//> using spark.version
+   * 3.5.8`), unless a hook is registered for their exact key, or for a longer prefix of it.
+   */
+  def find(hooks: Map[String, DirectiveHook], key: String): Option[DirectiveHook] =
+    hooks.get(key).orElse {
+      val parts = key.split('.')
+      (parts.length - 1 to 1 by -1)
+        .map(n => hooks.get(parts.take(n).mkString(".") + ".*"))
+        .collectFirst { case Some(hook) => hook }
+    }
+
+  /** Whether a key is a key prefix, like `spark.*` (see [[find]]) */
+  def isPrefix(key: String): Boolean =
+    key.endsWith(".*")
+
   /** The values of a directive, like the dependencies of `//> using dep a b` */
   def values(directive: UsingDirective): Either[String, Seq[String]] = {
     val values0 = directive.values.filter {
@@ -139,7 +158,12 @@ object DirectiveHook {
       }
   }
 
-  /** Compiler options, like `//> using option -deprecation` or `//> using options -Xasync` */
+  /**
+   * Compiler options, like `//> using option -deprecation` or `//> using options -Xasync`
+   *
+   * Options are checked first, so that invalid ones are reported right away. Like the
+   * compiler, unknown options get a warning in Scala 3, and are ignored.
+   */
   object ScalacOptions extends DirectiveHook {
     def handle(
         source: CodeSource,
@@ -147,7 +171,12 @@ object DirectiveHook {
         interp: ImportHook.InterpreterInterface,
         wrapperPath: Seq[Name]
     ): Either[String, Seq[ImportHook.Result]] =
-      values(directive).map(options => Seq(ImportHook.Result.ScalacOptions(options)))
+      for {
+        options <- values(directive)
+        checked <- interp.checkScalacOptions(options)
+        (validOptions, warnings) = checked
+      } yield warnings.map(ImportHook.Result.Warning(_)) ++
+        Seq(ImportHook.Result.ScalacOptions(validOptions)).filter(_.options.nonEmpty)
   }
 
   /**

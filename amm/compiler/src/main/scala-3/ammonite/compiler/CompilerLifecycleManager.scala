@@ -142,6 +142,25 @@ class CompilerLifecycleManager(
       preConfiguredSettingsChanged = true
     }
 
+  override def checkScalacOptions(
+      options: Seq[String]
+  ): Either[String, (Seq[String], Seq[String])] =
+    if (options.isEmpty) Right((Nil, Nil))
+    else {
+      val group = CompilerLifecycleManager.settingGroup
+      val summary = group.processArguments(options.toList, true, group.defaultState)
+      if (summary.errors.isEmpty) {
+        // Like the compiler, we only warn about unknown options, and ignore them. The other
+        // warnings (like those about deprecated aliases) are left to the compiler.
+        val unknown = summary.warnings.filter(_.startsWith("bad option"))
+        val ignored = unknown.flatMap(CompilerLifecycleManager.badOption.findFirstMatchIn(_))
+          .map(_.group(1))
+          .toSet
+        Right((options.filterNot(ignored), unknown))
+      } else
+        Left(summary.errors.mkString(newLine))
+    }
+
   def addScalacOptions(options: Seq[String]): Unit =
     synchronized {
       addedSettings ++= options
@@ -152,4 +171,26 @@ class CompilerLifecycleManager(
     Compiler.addToClasspath(classFiles, dynamicClasspath, outputDir)
   }
   def shutdownPressy() = () // N/A in Scala 3
+}
+
+object CompilerLifecycleManager {
+
+  /**
+   * The compiler settings, without any state (that lives in the `SettingsState`-s passed along)
+   *
+   * Before Scala 3.9, `ScalaSettings` is a concrete class that we instantiate. Later on, it's abstract,
+   * and its companion object, that extends it, holds the settings.
+   */
+  private lazy val settingGroup: dotc.config.Settings.SettingGroup = {
+    val cls = classOf[dotc.config.ScalaSettings]
+    Class.forName(cls.getName + "$", true, cls.getClassLoader)
+      .getField("MODULE$")
+      .get(null) match {
+      case group: dotc.config.Settings.SettingGroup => group
+      case _ => cls.getConstructor().newInstance()
+    }
+  }
+
+  /** Extracts the option from warnings like "bad option '-Xfoo' was ignored" */
+  private val badOption = "bad option '([^']*)'".r
 }

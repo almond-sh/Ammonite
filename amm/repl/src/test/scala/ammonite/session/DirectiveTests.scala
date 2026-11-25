@@ -122,15 +122,82 @@ object DirectiveTests extends TestSuite {
       res0: Boolean = true
     """)
 
-    test("unrecognized") - check.session("""
-      @ //> using foo bar
-      warning: ignoring unrecognized directive '//> using foo'
-    """)
+    test("invalidOption") {
+      if (check.scala2)
+        check.session("""
+          @ //> using option -Xnot-an-option
+          error: (console):1:11: bad option: '-Xnot-an-option'
+
+          @ interp.scalacOptions.contains("-Xnot-an-option")
+          res0: Boolean = false
+        """)
+      else
+        check.session("""
+          @ //> using options -Xnot-an-option -language:dynamics
+          warning: (console):1:11: bad option '-Xnot-an-option' was ignored
+
+          @ interp.scalacOptions.contains("-Xnot-an-option")
+          res0: Boolean = false
+
+          @ interp.scalacOptions.contains("-language:dynamics")
+          res1: Boolean = true
+        """)
+    }
+
+    test("unrecognized") {
+      check.session("""
+        @ //> using foo bar
+        error: (console):1:11: unrecognized directive '//> using foo'
+      """)
+      // none of the directives of a command are run if some are unrecognized
+      val repl = new TestRepl
+      val res = repl.run("//> using options -language:dynamics\n//> using foo bar\n", 0)
+      res._1 match {
+        case Res.Failure(msg) => assert(msg.contains("(console):2:11: unrecognized directive"))
+        case _ => assert({ identity(res); false })
+      }
+      assert(!repl.interp.scalacOptions.contains("-language:dynamics"))
+    }
 
     test("parseError") - check.session("""
       @ //> using dep "com.lihaoyi::scalatags:0.12.0
       error: (console):1:
     """)
+
+    test("prefix") {
+      // reports the keys it handles, as warnings
+      def hook(name: String): DirectiveHook = new DirectiveHook {
+        def handle(
+            source: ammonite.util.Util.CodeSource,
+            directive: ammonite.directives.UsingDirective,
+            interp: ammonite.runtime.ImportHook.InterpreterInterface,
+            wrapperPath: Seq[ammonite.util.Name]
+        ) = Right(Seq(ammonite.runtime.ImportHook.Result.Warning(s"$name: ${directive.key}")))
+      }
+      val repl = new TestRepl {
+        override def directiveHooks = DirectiveHook.defaults ++ Seq(
+          "foo.*" -> hook("foo-prefix"),
+          "foo.bar.*" -> hook("foo-bar-prefix"),
+          "foo.exact" -> hook("foo-exact")
+        )
+      }
+      repl.session("""
+        @ //> using foo.thing a
+        warning: (console):1:11: foo-prefix: foo.thing
+
+        @ //> using foo.bar.thing a
+        warning: (console):1:11: foo-bar-prefix: foo.bar.thing
+
+        @ //> using foo.exact a
+        warning: (console):1:11: foo-exact: foo.exact
+
+        @ //> using foo a
+        error: (console):1:11: unrecognized directive '//> using foo'
+      """)
+      // prefixes aren't offered as keys
+      val keys = repl.interp.completeUsingDirective("//> using fo", 12).map(_._2)
+      assert(keys == Some(Seq("foo.exact")))
+    }
 
     test("disabled") {
       val repl = new TestRepl {

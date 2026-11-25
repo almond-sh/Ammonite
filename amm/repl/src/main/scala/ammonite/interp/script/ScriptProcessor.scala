@@ -119,10 +119,10 @@ final case class ScriptProcessor(
         parsed.directives.flatMap { directive =>
           val start = pos(directive.keyPosition)
           val end = start.copy(char = start.char + directive.key.length)
-          directiveHooks.get(directive.key) match {
+          DirectiveHook.find(directiveHooks, directive.key) match {
             case None =>
               diagnostics += Diagnostic(
-                "WARNING",
+                "ERROR",
                 start,
                 end,
                 s"Unrecognized directive '//> using ${directive.key}'"
@@ -138,7 +138,11 @@ final case class ScriptProcessor(
                 case Left(err) =>
                   diagnostics += Diagnostic("ERROR", start, end, err)
                   Nil
-                case Right(res) => res
+                case Right(res) =>
+                  val (warnings, others) = res.partition(_.isInstanceOf[ImportHook.Result.Warning])
+                  for (ImportHook.Result.Warning(message) <- warnings)
+                    diagnostics += Diagnostic("WARNING", start, end, message)
+                  others
               }
           }
         }

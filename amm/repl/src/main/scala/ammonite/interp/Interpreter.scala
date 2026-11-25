@@ -62,6 +62,11 @@ class Interpreter(
 
   def scalaVersion = compilerBuilder.scalaVersion
 
+  override def checkScalacOptions(
+      options: Seq[String]
+  ): Either[String, (Seq[String], Seq[String])] =
+    compilerManager.checkScalacOptions(options)
+
   def dependencyComplete: String => (Int, Seq[String]) =
     IvyThing.completer(repositories(), verbose = verboseOutput, scalaVersion = scalaVersion)
 
@@ -303,6 +308,10 @@ class Interpreter(
         case ImportHook.Result.ScalacOptions(options) =>
           addScalacOptions(options)
           Res.Success(Imports())
+
+        case ImportHook.Result.Warning(message) =>
+          printer.warning(message)
+          Res.Success(Imports())
       }
     }
 
@@ -318,8 +327,14 @@ class Interpreter(
     s"$path:${position.line + 1}:${position.column + 1}"
   }
 
+  private def unrecognizedDirective(source: CodeSource, directive: UsingDirective): String =
+    s"${directivePosition(source, directive.keyPosition)}: " +
+      s"unrecognized directive '//> using ${directive.key}'"
+
   /**
    * Runs the hook of a using directive
+   *
+   * Fails if no hook handles its key.
    *
    * @return the imports the directive brings in scope (like the wrapper object of the
    *         scripts of `//> using script`)
@@ -330,19 +345,21 @@ class Interpreter(
       wrapperPath: Seq[Name],
       hooks: Map[String, DirectiveHook] = directiveHooks
   ): Res[Imports] = synchronized {
-    hooks.get(directive.key) match {
+    DirectiveHook.find(hooks, directive.key) match {
       case None =>
-        printer.warning(
-          s"${directivePosition(source, directive.keyPosition)}: " +
-            s"ignoring unrecognized directive '//> using ${directive.key}'"
-        )
-        Res.Success(Imports())
+        Res.Failure(unrecognizedDirective(source, directive))
       case Some(hook) =>
         for {
           hooked <- Res(
-            hook.handle(source, directive, this, wrapperPath).left.map { err =>
-              s"${directivePosition(source, directive.keyPosition)}: $err"
-            }
+            hook.handle(source, directive, this, wrapperPath)
+              .left.map(err => s"${directivePosition(source, directive.keyPosition)}: $err")
+              .map(_.map {
+                case ImportHook.Result.Warning(message) =>
+                  ImportHook.Result.Warning(
+                    s"${directivePosition(source, directive.keyPosition)}: $message"
+                  )
+                case other => other
+              })
           )
           imports <- handleHookResults(hooked)
         } yield imports.foldLeft(Imports())(_ ++ _)
@@ -354,6 +371,7 @@ class Interpreter(
    * hooks
    *
    * Does nothing if there are no directive hooks (see [[Interpreter.Parameters.directiveHooks]]).
+   * Fails, without running any hook, if some directives have no hook.
    *
    * @return the imports the directives bring in scope
    */
@@ -370,8 +388,11 @@ class Interpreter(
         s"${directivePosition(source, diag.position)}: ${diag.message}"
       for (warning <- warnings)
         printer.warning(message(warning))
-      if (errors.nonEmpty)
-        Res.Failure(errors.map(message).mkString(newLine))
+      val unrecognized = parsed.directives
+        .filter(directive => DirectiveHook.find(directiveHooks, directive.key).isEmpty)
+        .map(unrecognizedDirective(source, _))
+      if (errors.nonEmpty || unrecognized.nonEmpty)
+        Res.Failure((errors.map(message) ++ unrecognized).mkString(newLine))
       else
         Res.fold(Imports(), parsed.directives) { (acc, directive) =>
           resolveUsingDirective(source, directive, wrapperPath).map(acc ++ _)
@@ -397,9 +418,10 @@ class Interpreter(
     else
       DirectiveCompletion.find(code, pos).map {
         case DirectiveCompletion.Key(start, prefix) =>
-          (start, hooks.keys.filter(_.startsWith(prefix)).toVector.sorted)
+          val keys = hooks.keys.filter(k => !DirectiveHook.isPrefix(k) && k.startsWith(prefix))
+          (start, keys.toVector.sorted)
         case DirectiveCompletion.Value(key, start, prefix) =>
-          hooks.get(key) match {
+          DirectiveHook.find(hooks, key) match {
             case None => (pos, Nil)
             case Some(hook) =>
               val (from, completions) =
@@ -554,8 +576,8 @@ class Interpreter(
     }
 
   def processRawSource(
-    code: String,
-    fileName: String
+      code: String,
+      fileName: String
   ): Res[Seq[(String, Array[Byte])]] = synchronized {
     for {
       _ <- Catching { case e: ThreadDeath => Evaluator.interrupted(e) }
@@ -1032,8 +1054,8 @@ object Interpreter {
    *   there
    * @param directiveHooks
    *   Hooks handling the using directives (`//> using …`) of commands and scripts, by
-   *   directive key. If empty, directives are left alone (they're just comments for the
-   *   compiler).
+   *   directive key, or key prefix like `spark.*` (see [[DirectiveHook.find]]). If empty,
+   *   directives are left alone (they're just comments for the compiler).
    */
   case class Parameters(
       printer: Printer = Printer(
