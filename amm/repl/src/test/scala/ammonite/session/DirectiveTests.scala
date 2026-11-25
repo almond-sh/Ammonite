@@ -122,10 +122,20 @@ object DirectiveTests extends TestSuite {
       res0: Boolean = true
     """)
 
-    test("unrecognized") - check.session("""
-      @ //> using foo bar
-      warning: ignoring unrecognized directive '//> using foo'
-    """)
+    test("unrecognized") {
+      check.session("""
+        @ //> using foo bar
+        error: (console):1:11: unrecognized directive '//> using foo'
+      """)
+      // none of the directives of a command are run if some are unrecognized
+      val repl = new TestRepl
+      val res = repl.run("//> using options -language:dynamics\n//> using foo bar\n", 0)
+      res._1 match {
+        case Res.Failure(msg) => assert(msg.contains("(console):2:11: unrecognized directive"))
+        case _ => assert({ identity(res); false })
+      }
+      assert(!repl.interp.scalacOptions.contains("-language:dynamics"))
+    }
 
     test("parseError") - check.session("""
       @ //> using dep "com.lihaoyi::scalatags:0.12.0

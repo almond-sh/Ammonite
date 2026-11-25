@@ -66,7 +66,7 @@ object ScriptProcessorDirectiveTests extends TestSuite {
           |""".stripMargin
       )
       val diagnostics = script.processorDiagnostics.map(d => (d.severity, d.start.line))
-      assert(diagnostics == Seq(("WARNING", 0), ("ERROR", 1)))
+      assert(diagnostics == Seq(("ERROR", 0), ("ERROR", 1)))
     }
   }
 }

@@ -318,8 +318,14 @@ class Interpreter(
     s"$path:${position.line + 1}:${position.column + 1}"
   }
 
+  private def unrecognizedDirective(source: CodeSource, directive: UsingDirective): String =
+    s"${directivePosition(source, directive.keyPosition)}: " +
+      s"unrecognized directive '//> using ${directive.key}'"
+
   /**
    * Runs the hook of a using directive
+   *
+   * Fails if no hook handles its key.
    *
    * @return the imports the directive brings in scope (like the wrapper object of the
    *         scripts of `//> using script`)
@@ -332,11 +338,7 @@ class Interpreter(
   ): Res[Imports] = synchronized {
     hooks.get(directive.key) match {
       case None =>
-        printer.warning(
-          s"${directivePosition(source, directive.keyPosition)}: " +
-            s"ignoring unrecognized directive '//> using ${directive.key}'"
-        )
-        Res.Success(Imports())
+        Res.Failure(unrecognizedDirective(source, directive))
       case Some(hook) =>
         for {
           hooked <- Res(
@@ -354,6 +356,7 @@ class Interpreter(
    * hooks
    *
    * Does nothing if there are no directive hooks (see [[Interpreter.Parameters.directiveHooks]]).
+   * Fails, without running any hook, if some directives have no hook.
    *
    * @return the imports the directives bring in scope
    */
@@ -370,8 +373,11 @@ class Interpreter(
         s"${directivePosition(source, diag.position)}: ${diag.message}"
       for (warning <- warnings)
         printer.warning(message(warning))
-      if (errors.nonEmpty)
-        Res.Failure(errors.map(message).mkString(newLine))
+      val unrecognized = parsed.directives
+        .filter(directive => !directiveHooks.contains(directive.key))
+        .map(unrecognizedDirective(source, _))
+      if (errors.nonEmpty || unrecognized.nonEmpty)
+        Res.Failure((errors.map(message) ++ unrecognized).mkString(newLine))
       else
         Res.fold(Imports(), parsed.directives) { (acc, directive) =>
           resolveUsingDirective(source, directive, wrapperPath).map(acc ++ _)

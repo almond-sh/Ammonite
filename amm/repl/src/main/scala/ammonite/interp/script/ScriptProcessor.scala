@@ -122,7 +122,7 @@ final case class ScriptProcessor(
           directiveHooks.get(directive.key) match {
             case None =>
               diagnostics += Diagnostic(
-                "WARNING",
+                "ERROR",
                 start,
                 end,
                 s"Unrecognized directive '//> using ${directive.key}'"
