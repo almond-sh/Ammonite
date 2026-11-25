@@ -122,6 +122,28 @@ object DirectiveTests extends TestSuite {
       res0: Boolean = true
     """)
 
+    test("invalidOption") {
+      if (check.scala2)
+        check.session("""
+          @ //> using option -Xnot-an-option
+          error: (console):1:11: bad option: '-Xnot-an-option'
+
+          @ interp.scalacOptions.contains("-Xnot-an-option")
+          res0: Boolean = false
+        """)
+      else
+        check.session("""
+          @ //> using options -Xnot-an-option -language:dynamics
+          warning: (console):1:11: bad option '-Xnot-an-option' was ignored
+
+          @ interp.scalacOptions.contains("-Xnot-an-option")
+          res0: Boolean = false
+
+          @ interp.scalacOptions.contains("-language:dynamics")
+          res1: Boolean = true
+        """)
+    }
+
     test("unrecognized") {
       check.session("""
         @ //> using foo bar

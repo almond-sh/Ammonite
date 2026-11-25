@@ -61,6 +61,16 @@ object ImportHook {
     def loadIvy(coordinates: Dependency*): Either[String, Seq[JFile]]
     def watch(p: os.Path): Unit
     def scalaVersion: String
+
+    /**
+     * Checks compiler options, before they're passed along
+     *
+     * @return the errors of the options if some are invalid, or the options to pass to the
+     *         compiler along with warnings about the options
+     *         (see [[ammonite.compiler.iface.CompilerLifecycleManager.checkScalacOptions]])
+     */
+    def checkScalacOptions(options: Seq[String]): Either[String, (Seq[String], Seq[String])] =
+      Right((options, Nil))
   }
 
   /**

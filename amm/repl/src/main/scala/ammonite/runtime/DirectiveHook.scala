@@ -158,7 +158,12 @@ object DirectiveHook {
       }
   }
 
-  /** Compiler options, like `//> using option -deprecation` or `//> using options -Xasync` */
+  /**
+   * Compiler options, like `//> using option -deprecation` or `//> using options -Xasync`
+   *
+   * Options are checked first, so that invalid ones are reported right away. Like the
+   * compiler, unknown options get a warning in Scala 3, and are ignored.
+   */
   object ScalacOptions extends DirectiveHook {
     def handle(
         source: CodeSource,
@@ -166,7 +171,12 @@ object DirectiveHook {
         interp: ImportHook.InterpreterInterface,
         wrapperPath: Seq[Name]
     ): Either[String, Seq[ImportHook.Result]] =
-      values(directive).map(options => Seq(ImportHook.Result.ScalacOptions(options)))
+      for {
+        options <- values(directive)
+        checked <- interp.checkScalacOptions(options)
+        (validOptions, warnings) = checked
+      } yield warnings.map(ImportHook.Result.Warning(_)) ++
+        Seq(ImportHook.Result.ScalacOptions(validOptions)).filter(_.options.nonEmpty)
   }
 
   /**

@@ -38,5 +38,16 @@ abstract class CompilerLifecycleManager {
    */
   def addScalacOptions(options: Seq[String]): Unit
 
+  /**
+   * Checks options before they're passed to [[addScalacOptions]], so that invalid ones can be
+   * reported right away (rather than upon each later compilation)
+   *
+   * @return the errors of the options if some are invalid, or the options to pass to
+   *         [[addScalacOptions]] (without those the compiler ignores, like unknown ones
+   *         in Scala 3) along with warnings about the options
+   */
+  def checkScalacOptions(options: Seq[String]): Either[String, (Seq[String], Seq[String])] =
+    Right((options, Nil))
+
   def shutdownPressy(): Unit
 }

@@ -62,6 +62,11 @@ class Interpreter(
 
   def scalaVersion = compilerBuilder.scalaVersion
 
+  override def checkScalacOptions(
+      options: Seq[String]
+  ): Either[String, (Seq[String], Seq[String])] =
+    compilerManager.checkScalacOptions(options)
+
   def dependencyComplete: String => (Int, Seq[String]) =
     IvyThing.completer(repositories(), verbose = verboseOutput, scalaVersion = scalaVersion)
 
