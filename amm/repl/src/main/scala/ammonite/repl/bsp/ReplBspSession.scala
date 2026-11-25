@@ -47,8 +47,11 @@ final class ReplBspSession(
 
   def buildTarget(frame: Frame): BuildTarget = {
     val capabilities = new BuildTargetCapabilities
-    // Everything is compiled already, compile requests are no-ops
-    capabilities.setCanCompile(true)
+    // The REPL compiles everything itself, as code gets evaluated: there's nothing to compile
+    // upon request (compile requests are no-ops). Clients that compile targets on their own
+    // accord (like when files change) and act upon the outcome (like by restarting their
+    // presentation compilers) shouldn't do it for these.
+    capabilities.setCanCompile(false)
     capabilities.setCanTest(false)
     capabilities.setCanRun(false)
     capabilities.setCanDebug(false)
