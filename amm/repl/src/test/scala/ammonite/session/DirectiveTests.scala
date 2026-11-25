@@ -142,6 +142,41 @@ object DirectiveTests extends TestSuite {
       error: (console):1:
     """)
 
+    test("prefix") {
+      // reports the keys it handles, as warnings
+      def hook(name: String): DirectiveHook = new DirectiveHook {
+        def handle(
+            source: ammonite.util.Util.CodeSource,
+            directive: ammonite.directives.UsingDirective,
+            interp: ammonite.runtime.ImportHook.InterpreterInterface,
+            wrapperPath: Seq[ammonite.util.Name]
+        ) = Right(Seq(ammonite.runtime.ImportHook.Result.Warning(s"$name: ${directive.key}")))
+      }
+      val repl = new TestRepl {
+        override def directiveHooks = DirectiveHook.defaults ++ Seq(
+          "foo.*" -> hook("foo-prefix"),
+          "foo.bar.*" -> hook("foo-bar-prefix"),
+          "foo.exact" -> hook("foo-exact")
+        )
+      }
+      repl.session("""
+        @ //> using foo.thing a
+        warning: (console):1:11: foo-prefix: foo.thing
+
+        @ //> using foo.bar.thing a
+        warning: (console):1:11: foo-bar-prefix: foo.bar.thing
+
+        @ //> using foo.exact a
+        warning: (console):1:11: foo-exact: foo.exact
+
+        @ //> using foo a
+        error: (console):1:11: unrecognized directive '//> using foo'
+      """)
+      // prefixes aren't offered as keys
+      val keys = repl.interp.completeUsingDirective("//> using fo", 12).map(_._2)
+      assert(keys == Some(Seq("foo.exact")))
+    }
+
     test("disabled") {
       val repl = new TestRepl {
         override def directiveHooks = Map.empty

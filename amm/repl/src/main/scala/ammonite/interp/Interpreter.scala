@@ -340,7 +340,7 @@ class Interpreter(
       wrapperPath: Seq[Name],
       hooks: Map[String, DirectiveHook] = directiveHooks
   ): Res[Imports] = synchronized {
-    hooks.get(directive.key) match {
+    DirectiveHook.find(hooks, directive.key) match {
       case None =>
         Res.Failure(unrecognizedDirective(source, directive))
       case Some(hook) =>
@@ -384,7 +384,7 @@ class Interpreter(
       for (warning <- warnings)
         printer.warning(message(warning))
       val unrecognized = parsed.directives
-        .filter(directive => !directiveHooks.contains(directive.key))
+        .filter(directive => DirectiveHook.find(directiveHooks, directive.key).isEmpty)
         .map(unrecognizedDirective(source, _))
       if (errors.nonEmpty || unrecognized.nonEmpty)
         Res.Failure((errors.map(message) ++ unrecognized).mkString(newLine))
@@ -413,9 +413,10 @@ class Interpreter(
     else
       DirectiveCompletion.find(code, pos).map {
         case DirectiveCompletion.Key(start, prefix) =>
-          (start, hooks.keys.filter(_.startsWith(prefix)).toVector.sorted)
+          val keys = hooks.keys.filter(k => !DirectiveHook.isPrefix(k) && k.startsWith(prefix))
+          (start, keys.toVector.sorted)
         case DirectiveCompletion.Value(key, start, prefix) =>
-          hooks.get(key) match {
+          DirectiveHook.find(hooks, key) match {
             case None => (pos, Nil)
             case Some(hook) =>
               val (from, completions) =
@@ -1048,8 +1049,8 @@ object Interpreter {
    *   there
    * @param directiveHooks
    *   Hooks handling the using directives (`//> using …`) of commands and scripts, by
-   *   directive key. If empty, directives are left alone (they're just comments for the
-   *   compiler).
+   *   directive key, or key prefix like `spark.*` (see [[DirectiveHook.find]]). If empty,
+   *   directives are left alone (they're just comments for the compiler).
    */
   case class Parameters(
       printer: Printer = Printer(

@@ -119,7 +119,7 @@ final case class ScriptProcessor(
         parsed.directives.flatMap { directive =>
           val start = pos(directive.keyPosition)
           val end = start.copy(char = start.char + directive.key.length)
-          directiveHooks.get(directive.key) match {
+          DirectiveHook.find(directiveHooks, directive.key) match {
             case None =>
               diagnostics += Diagnostic(
                 "ERROR",
