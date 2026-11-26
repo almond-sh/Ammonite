@@ -466,6 +466,16 @@ class Interpreter(
     )
     val (hookStmts, importTrees) = parser().parseImportHooks(codeSource, stmts)
 
+    // The statements may not include what precedes the first of them (comments, like using
+    // directives, blank lines…) - the Scala 3 parser drops it. Put blank space in its place, for
+    // the positions in error messages and stack traces to be those of the code that was typed.
+    val leadingSpaces = {
+      val firstIdx = stmts.headOption.map(code.indexOf(_)).filter(_ > 0).getOrElse(0)
+      val leading = code.substring(0, firstIdx)
+      val lineStart = leading.lastIndexOf('\n') + 1
+      System.lineSeparator() * leading.count(_ == '\n') + " " * (leading.length - lineStart)
+    }
+
     for {
       _ <- Catching { case ex => Res.Exception(ex, "") }
       directiveImports <- resolveUsingDirectives(code, codeSource, replCodeWrapper.wrapperPath)
@@ -480,7 +490,7 @@ class Interpreter(
       processedOpt <- compilerManager.preprocess("(console)").transform(
         hookStmts,
         currentLine.toString,
-        "",
+        leadingSpaces,
         codeSource,
         wrapperName,
         predefImports ++ frameImports ++ hookImports,
