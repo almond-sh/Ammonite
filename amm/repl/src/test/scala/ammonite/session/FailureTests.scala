@@ -114,36 +114,46 @@ object FailureTests extends TestSuite {
     }
 
     test("lineNumbersInStackTrace1") {
-      if (check.scala2) {
-        check.fail(
-          """
-            |
-            |
-            | 1 / 0
-            |""".stripMargin,
-          x =>
-            x.contains("/ by zero") &&
-              x.contains("cmd0.sc:4") // check that the line number is correct
+      check.fail(
+        """
+          |
+          |
+          | 1 / 0
+          |""".stripMargin,
+        x =>
+          x.contains("/ by zero") &&
+            x.contains("cmd0.sc:4") // check that the line number is correct
 
-        )
-      }
+      )
     }
 
     test("lineNumbersInStackTrace2") {
-      if (check.scala2) {
-        check.fail(
-          """
-            |{
-            |
-            | // block command
-            | 1 / 0
-            |}
-            |""".stripMargin,
-          x =>
-            x.contains("/ by zero") &&
-              x.contains("cmd0.sc:5") // check that the line number is correct
-        )
-      }
+      check.fail(
+        """
+          |{
+          |
+          | // block command
+          | 1 / 0
+          |}
+          |""".stripMargin,
+        x =>
+          x.contains("/ by zero") &&
+            x.contains("cmd0.sc:5") // check that the line number is correct
+      )
+    }
+
+    test("lineNumbersInStackTrace3") {
+      // comments and using directives before the first statement don't shift line numbers
+      check.fail(
+        """// a comment
+          |//> using option -deprecation
+          |
+          |1 / 0
+          |""".stripMargin,
+        x =>
+          x.contains("/ by zero") &&
+            x.contains("cmd0.sc:4") // check that the line number is correct
+      )
     }
 
     test("wrapperNameInStackTrace") {
