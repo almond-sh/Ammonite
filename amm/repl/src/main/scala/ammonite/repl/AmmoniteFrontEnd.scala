@@ -40,6 +40,41 @@ case class AmmoniteFrontEnd(
 
   val cutPasteFilter = ReadlineFilters.CutPasteFilter()
 
+  override def readCommand(
+      prompt: String,
+      input: InputStream,
+      reader: java.io.Reader,
+      output: OutputStream,
+      colors: Colors,
+      history: IndexedSeq[String]
+  ): Option[String] = {
+    val historyFilter = new HistoryFilter(() => history.reverse, colors.comment())
+    val filters = Filter.merge(
+      UndoFilter(),
+      historyFilter,
+      GUILikeFilters.altFilter,
+      GUILikeFilters.fnFilter,
+      ReadlineFilters.navFilter,
+      ReadlineFilters.CutPasteFilter(),
+      BasicFilters.all
+    )
+    Terminal.readLine(
+      prompt,
+      reader,
+      new OutputStreamWriter(output),
+      filters,
+      displayTransform = { (buffer, cursor) =>
+        val newBuffer = HistoryFilter.mangleBuffer(
+          historyFilter,
+          fansi.Str(buffer.mkString),
+          cursor,
+          fansi.Underlined.On
+        )
+        (newBuffer, 0)
+      }
+    )
+  }
+
   def readLine(
       reader: java.io.Reader,
       output: OutputStream,

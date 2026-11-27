@@ -159,7 +159,8 @@ class MainRunner(
       scalacOptions = cliConfig.core.scalacOptions,
       sessionDirectory = cliConfig.repl.sessionDirectory,
       semanticDbs = cliConfig.repl.semanticDb.value,
-      bspSocket = cliConfig.repl.bspSocket
+      bspSocket = cliConfig.repl.bspSocket,
+      debugger = cliConfig.repl.debugger.value
     )
   }
 

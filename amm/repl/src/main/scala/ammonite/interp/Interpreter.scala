@@ -539,6 +539,15 @@ class Interpreter(
         "Compilation Failed"
       )
       _ = incrementLine()
+      _ = {
+        if (!silent) {
+          val classNames = output.classFiles.collect {
+            case (name, _) if name.endsWith(".class") =>
+              name.stripSuffix(".class").replace('/', '.')
+          }
+          parameters.beforeRun(indexedWrapperName.raw, classNames)
+        }
+      }
       res <- eval.processLine(
         output.classFiles,
         output.imports,
@@ -1066,6 +1075,10 @@ object Interpreter {
    *   Hooks handling the using directives (`//> using …`) of commands and scripts, by
    *   directive key, or key prefix like `spark.*` (see [[DirectiveHook.find]]). If empty,
    *   directives are left alone (they're just comments for the compiler).
+   * @param beforeRun
+   *   Called right before the wrapper class of a REPL command is loaded and run, from the
+   *   thread running it, with the name of that wrapper class (like `cmd3`) and the full names
+   *   of the classes the command was compiled to. Used by the debugger, to set breakpoints.
    */
   case class Parameters(
       printer: Printer = Printer(
@@ -1089,7 +1102,8 @@ object Interpreter {
       warnings: Boolean = false,
       pkgName: Seq[Name] = Seq(Name("ammonite"), Name("$sess")),
       frameOutputs: Option[FrameOutputs] = None,
-      extraScalacOptions: Seq[String] = Nil
+      extraScalacOptions: Seq[String] = Nil,
+      beforeRun: (String, Seq[String]) => Unit = (_, _) => ()
   )
 
   val predefImports = Imports(

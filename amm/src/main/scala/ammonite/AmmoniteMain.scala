@@ -24,6 +24,16 @@ object AmmoniteMain {
     // test suite without mangling the global properties of the JVM process
     ProxyFromEnv.setPropProxyFromEnv()
 
+    // The debugger needs a JDWP agent, which can only be loaded when the JVM starts
+    val restartForDebugger =
+      args0.contains("--debugger") &&
+        Config.parser.constructEither(args0.toList).toOption.exists(_.repl.debugger.value) &&
+        ammonite.util.Util.javaMajorVersion >= 11 &&
+        DebuggerRestart.needed() &&
+        !DebuggerRestart.alreadyRestarted()
+    if (restartForDebugger)
+      sys.exit(DebuggerRestart.run(args0.toSeq))
+
     val success = main0(args0.toList, System.in, System.out, System.err)
     if (success) sys.exit(0)
     else sys.exit(1)
@@ -71,6 +81,19 @@ object AmmoniteMain {
           }
 
           val isRepl = cliConfig.core.code.isEmpty && cliConfig.rest.value.isEmpty
+          val debuggerError =
+            if (!cliConfig.repl.debugger.value) None
+            else if (!isRepl) Some("--debugger is only supported when running the REPL")
+            else if (ammonite.util.Util.javaMajorVersion < 11)
+              Some("--debugger requires Java 11 or later")
+            else if (DebuggerRestart.needed())
+              Some(
+                "--debugger requires the JVM to run with a JDWP agent, started with " +
+                  ammonite.debugger.Jdwp.javaOptions.mkString(" ")
+              )
+            else if (!ammonite.debugger.DebugAdapter.jdiAvailable)
+              Some("--debugger requires JDI, that's not available (not running on a JDK?)")
+            else None
           val sessionError = Seq(
             "--bsp-socket" -> cliConfig.repl.bspSocket.nonEmpty,
             "--semanticdb" -> cliConfig.repl.semanticDb.value
@@ -79,7 +102,7 @@ object AmmoniteMain {
               s"$option is only supported when running the REPL"
             case (option, true) if cliConfig.repl.sessionDirectory.isEmpty =>
               s"$option requires --session-directory"
-          }
+          }.orElse(debuggerError)
 
           (cliConfig.core.code, cliConfig.rest.value.toList) match {
             case _ if sessionError.nonEmpty =>
