@@ -508,11 +508,13 @@ object Deps {
       else "2.0.1"
     mvn"org.scala-lang.modules::scala-xml:$ver"
   }
+  val scalaDebugAdapter = mvn"ch.epfl.scala::scala-debug-adapter:4.2.13"
   val scalazCore = mvn"org.scalaz::scalaz-core:7.2.36"
   val semanticDbScalac = mvn"org.scalameta:::semanticdb-scalac:$scalametaVersion"
   val shapeless = mvn"com.chuusai::shapeless:2.3.3"
   val slf4jNop = mvn"org.slf4j:slf4j-nop:2.0.17"
   val sourcecode = mvn"com.lihaoyi::sourcecode:0.4.4"
+  val ujson = mvn"com.lihaoyi::ujson:4.3.2"
   val upickle = mvn"com.lihaoyi::upickle:4.3.2"
 
   val utest = mvn"com.lihaoyi::utest:0.9.1"
@@ -801,6 +803,42 @@ object amm extends Cross[MainModule](binCrossScalaVersions)
   }
 
   /**
+   * The debugger of Ammonite sessions (the REPL, Almond kernels, …), that runs in the JVM of
+   * the session itself: talks DAP to scala-debug-adapter (see [[amm.`debug-adapter`]]), loaded
+   * at run time in a class loader of its own, and attached to the JDWP agent of that JVM.
+   */
+  object debugger extends Cross[DebuggerModule](binCrossScalaVersions)
+      with ShortCrossNames[DebuggerModule]
+  trait DebuggerModule extends AmmModule {
+    def moduleDeps: Seq[PublishModule] = Seq()
+    def mvnDeps: T[Seq[Dep]] = Task {
+      super.mvnDeps() ++ Seq(
+        Deps.coursierInterface,
+        Deps.scalaCollectionCompat,
+        Deps.ujson
+      )
+    }
+    object test extends AmmTests
+  }
+
+  /**
+   * scala-debug-adapter, along with what it needs to debug the JVM it runs in. Only built for
+   * Scala 2.13: [[amm.debugger]] fetches it at run time, and loads it in a class loader of its
+   * own, whatever the Scala version of the session.
+   */
+  object `debug-adapter` extends Cross[DebugAdapterModule](Seq(scala2_13Versions.last))
+      with ShortCrossNames[DebugAdapterModule]
+  trait DebugAdapterModule extends AmmModule {
+    def moduleDeps: Seq[PublishModule] = Seq()
+    def mvnDeps: T[Seq[Dep]] = Task {
+      super.mvnDeps() ++ Seq(
+        Deps.coursierInterface,
+        Deps.scalaDebugAdapter
+      )
+    }
+  }
+
+  /**
    * The parser of using directives (`//> using dep …`, `//> using script …`, …), the ones
    * Scala CLI reads from its sources, and that Ammonite reads from scripts and commands.
    *
@@ -997,6 +1035,7 @@ object amm extends Cross[MainModule](binCrossScalaVersions)
       amm.util(),
       amm.directives(),
       amm.repl.api(),
+      amm.debugger(),
       terminal()
     )
     def mvnDeps: T[Seq[Dep]] = super.mvnDeps() ++ Seq(

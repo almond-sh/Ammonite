@@ -10,6 +10,7 @@ import ammonite.util._
 import ammonite.compiler.iface.{CodeWrapper, CompilerBuilder, Parser}
 import ammonite.interp.Interpreter
 import ammonite.repl.bsp.{ReplBspServer, ReplBspSession}
+import ammonite.repl.debugger.ReplDebugger
 import coursierapi.Dependency
 
 import scala.annotation.tailrec
@@ -38,7 +39,8 @@ class Repl(
     sessionDirectory: Option[os.Path] = None,
     semanticDbs: Boolean = false,
     bspSocket: Option[String] = None,
-    scalacOptions: Seq[String] = Nil
+    scalacOptions: Seq[String] = Nil,
+    debugger: Boolean = false
 ) { repl =>
 
   require(
@@ -48,11 +50,16 @@ class Repl(
 
   val prompt = Ref("@ ")
 
+  /** Also accepts the debugger commands, like `:break 3`, if the debugger is enabled */
+  private val frontEndParser =
+    if (debugger) new ReplDebugger.CommandsParser(parser)
+    else parser
+
   val frontEnd = Ref[FrontEnd](
     if (scala.util.Properties.isWin)
-      new ammonite.repl.FrontEnds.JLineWindows(parser)
+      new ammonite.repl.FrontEnds.JLineWindows(frontEndParser)
     else
-      AmmoniteFrontEnd(parser, Filter.empty)
+      AmmoniteFrontEnd(frontEndParser, Filter.empty)
   )
 
   var lastException: Throwable = null
@@ -65,7 +72,16 @@ class Repl(
   val frames = Ref(List(ammonite.runtime.Frame.createInitial(initialClassLoader)))
 
   /** Where the sources and byte code of each frame get written, if we were asked to */
-  val frameOutputs = sessionDirectory.map { dir =>
+  val frameOutputs = sessionDirectory.orElse {
+    // the debugger reads the byte code and the sources of commands from there
+    if (debugger) {
+      val dir = os.temp.dir(prefix = "ammonite-session", deleteOnExit = false)
+      Runtime.getRuntime.addShutdownHook(new Thread("ammonite-session-cleanup") {
+        override def run(): Unit = os.remove.all(dir)
+      })
+      Some(dir)
+    } else None
+  }.map { dir =>
     new FrameOutputs(
       dir,
       semanticDbs = semanticDbs,
@@ -101,7 +117,9 @@ class Repl(
     alreadyLoadedDependencies = alreadyLoadedDependencies,
     warnings = warnings,
     frameOutputs = frameOutputs,
-    extraScalacOptions = scalacOptions
+    extraScalacOptions = scalacOptions,
+    beforeRun = (wrapperName, classNames) =>
+      for (d <- replDebugger) d.beforeRun(wrapperName, classNames)
   )
   val interp = new Interpreter(
     compilerBuilder,
@@ -118,6 +136,32 @@ class Repl(
     parameters = interpParams
   )
 
+  /** The debugger of the REPL, if it's enabled */
+  lazy val replDebugger: Option[ReplDebugger] =
+    if (debugger)
+      for (outputs <- frameOutputs) yield new ReplDebugger(
+        () => frames(),
+        outputs,
+        interpParams.pkgName.map(_.encoded),
+        compilerBuilder.scalaVersion,
+        ammonite.Constants.version,
+        () => interp.repositories(),
+        initialClassLoader,
+        printer.outStream,
+        colors,
+        (prompt, history) =>
+          frontEnd().readCommand(prompt, input, reader, output, colors(), history),
+        () =>
+          if (currentLine > 0) Some(interpParams.wrapperNamePrefix + (currentLine - 1))
+          else None,
+        ammonite.debugger.Logger.stderr(
+          Option(System.getenv("AMMONITE_DEBUGGER_LOG_LEVEL"))
+            .flatMap(s => scala.util.Try(s.trim.toInt).toOption)
+            .getOrElse(2)
+        )
+      )
+    else None
+
   val bridges = Seq(
     (
       "ammonite.repl.ReplBridge",
@@ -126,6 +170,7 @@ class Repl(
         def printer = repl.printer
         val colors = repl.colors
         def sess = repl.sess0
+        override def debugger = replDebugger.fold(super.debugger)(_.api)
         val prompt = repl.prompt
         val frontEnd = repl.frontEnd
 
@@ -168,7 +213,12 @@ class Repl(
     )
   )
 
-  def initializePredef() = interp.initializePredef(basePredefs, customPredefs, bridges, baseImports)
+  def initializePredef() = {
+    val imports =
+      if (replDebugger.isEmpty) baseImports
+      else baseImports ++ Imports(ImportData("ammonite.repl.api.DebuggerAPI.breakpoint"))
+    interp.initializePredef(basePredefs, customPredefs, bridges, imports)
+  }
 
   /**
    * Starts a BSP server exposing this session, if we were asked to
@@ -257,13 +307,17 @@ class Repl(
         }
     )
     out <- {
-      if (code.startsWith("package "))
+      if (replDebugger.nonEmpty && ReplDebugger.isCommand(code)) {
+        replDebugger.foreach(_.replCommand(code))
+        Res.Success(Evaluated(Nil, Imports()))
+      } else if (code.startsWith("package "))
         interp.processRawSource(code, s"source-$currentLine.scala").map { _ =>
           currentLine += 1
           Evaluated(Nil, Imports())
         }
       else
-        interp.processLine(code, stmts, currentLine, false, () => currentLine += 1)
+        try interp.processLine(code, stmts, currentLine, false, () => currentLine += 1)
+        finally replDebugger.foreach(_.afterRun())
     }
   } yield {
     printer.outStream.println()

@@ -64,6 +64,8 @@ import scala.concurrent.duration.Duration
  * @param bspSocket If non-empty, the REPL starts a BSP server exposing its session,
  *                  listening on a Unix domain socket at this path. Requires
  *                  `sessionDirectory`, and Java 17 or later.
+ * @param debugger Whether to enable the debugger of the REPL. Requires the JVM to run with
+ *                 a JDWP agent, see [[ammonite.debugger.Jdwp.javaOptions]].
  */
 case class Main(
     predefCode: String = "",
@@ -92,7 +94,8 @@ case class Main(
     sessionDirectory: Option[os.Path] = None,
     semanticDbs: Boolean = false,
     bspSocket: Option[String] = None,
-    scalacOptions: Seq[String] = Nil
+    scalacOptions: Seq[String] = Nil,
+    debugger: Boolean = false
 ) {
 
   require(
@@ -153,7 +156,8 @@ case class Main(
         sessionDirectory = sessionDirectory,
         semanticDbs = semanticDbs,
         bspSocket = bspSocket,
-        scalacOptions = scalacOptions
+        scalacOptions = scalacOptions,
+        debugger = debugger
       )
     }
 
@@ -256,9 +260,15 @@ case class Main(
                   warmupThread.setDaemon(true)
                   warmupThread.start()
 
+                  // Get the debugger ready while the user types their first commands too
+                  repl.replDebugger.foreach(_.startInBackground())
+
                   val exitValue = Res.Success(repl.run())
                   (exitValue.map(repl.beforeExit), repl.interp.watchedValues.toSeq)
-                } finally bspServer.foreach(_.close())
+                } finally {
+                  bspServer.foreach(_.close())
+                  repl.replDebugger.foreach(_.shutdown())
+                }
             }
         }
     }

@@ -155,7 +155,14 @@ object Config {
         created at this path. Each frame of the session is a build target. Requires
         --session-directory, and Java 17 or later."""
       )
-      bspSocket: Option[String] = None
+      bspSocket: Option[String] = None,
+      @arg(
+        doc = """Enable the debugger of the REPL: set breakpoints with ':break <line>' or by
+        calling 'breakpoint()' in your code, then inspect the stopped code from the '(debug)'
+        prompt. Requires Java 11 or later (running Ammonite with a JDWP agent, Ammonite
+        restarts itself with one if needed)."""
+      )
+      debugger: Flag
   )
   implicit val replParser: ParserForClass[Repl] = ParserForClass[Repl]
 

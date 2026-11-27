@@ -127,6 +127,12 @@ trait ReplAPI extends ReplAPIScalaVersionSpecific {
    */
   def sess: Session
 
+  /**
+   * The debugger of the REPL (only enabled when Ammonite is started with `--debugger`), that
+   * lets you set breakpoints in the code of commands, see [[DebuggerAPI]]
+   */
+  def debugger: DebuggerAPI = DebuggerAPI.disabled
+
   def load: ReplLoad
 
   def clipboard: Clipboard
